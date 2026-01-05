@@ -27,6 +27,8 @@ export class Game {
     this.speed = 0.5; // Start at 50% speed
     this.speedIncrement = 0.05; // Increase 5% per pipe
     this.maxSpeed = 1.0; // Cap at 100%
+    this.gameOverTime = 0; // When game over started
+    this.restartCooldown = 3000; // 3 seconds before pump can restart
 
     // Background elements
     this.groundOffset = 0;
@@ -102,8 +104,11 @@ export class Game {
       this.start();
       return true;
     } else if (this.state === 'gameover') {
-      this.start();
-      return true;
+      if (this.canRestartFromGameOver()) {
+        this.start();
+        return true;
+      }
+      return false;
     }
     return false;
   }
@@ -148,7 +153,12 @@ export class Game {
 
   gameOver() {
     this.state = 'gameover';
+    this.gameOverTime = performance.now();
     this.saveHighScore();
+  }
+
+  canRestartFromGameOver() {
+    return performance.now() - this.gameOverTime >= this.restartCooldown;
   }
 
   render() {
