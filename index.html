@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Fappy Bird</title>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Fappy Bird - A Hand-Motion Game">
+  <meta property="og:description" content="Control the bird with your hands. It's exactly what it sounds like.">
+  <meta property="og:type" content="website">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Fappy Bird">
+  <meta name="twitter:description" content="A game of skill, endurance, and wrist stamina.">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="game"></canvas>
+    <div id="debug-overlay">
+      <canvas id="hand-canvas"></canvas>
+      <div id="status">Initializing...</div>
+    </div>
+    <div id="ui-overlay">
+      <div id="menu" class="screen">
+        <h1>FAPPY BIRD</h1>
+        <p class="tagline">A game of skill, endurance, and wrist stamina</p>
+        <button id="start-btn">Start Fapping</button>
+        <p class="instructions">
+          Hold something cylindrical (like a Pringles can)<br>
+          and move your hand up and down to make the bird jump.
+        </p>
+        <p class="fallback">Or just press SPACE / tap the screen</p>
+      </div>
+      <div id="ready" class="screen hidden">
+        <div class="tutorial">
+          <div class="hand-demo">
+            <div class="hand-icon">✊</div>
+            <div class="motion-arrow">↕</div>
+          </div>
+          <h2>Get Ready!</h2>
+          <p class="tutorial-text">Move your hand <strong>UP</strong> to make the bird jump</p>
+          <p class="pump-prompt">Pump once to start!</p>
+        </div>
+      </div>
+      <div id="gameover" class="screen hidden">
+        <h2>You Fapped Out!</h2>
+        <p class="score-label">Score</p>
+        <p id="final-score" class="big-score">0</p>
+        <p class="encouragement">Don't worry, it happens to everyone.</p>
+        <button id="retry-btn">Try Again</button>
+        <button id="share-btn">Share Your Performance</button>
+      </div>
+    </div>
+    <div id="score-display" class="hidden">
+      <span id="score">0</span>
+    </div>
+  </div>
+
+  <!-- TensorFlow.js and Hand Pose Detection -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

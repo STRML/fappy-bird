@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Camera Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #1a1a2e; color: white; }
+    video { width: 320px; height: 240px; background: #333; }
+    #log { background: #000; padding: 10px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow: auto; }
+    button { padding: 10px 20px; margin: 10px 0; font-size: 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Camera Test</h1>
+  <p>URL: <span id="url"></span></p>
+  <p>Secure Context: <span id="secure"></span></p>
+  <p>getUserMedia available: <span id="gum"></span></p>
+
+  <button onclick="testCamera()">Test Camera Access</button>
+
+  <video id="video" autoplay playsinline muted></video>
+
+  <h3>Log:</h3>
+  <div id="log"></div>
+
+  <script>
+    const log = (msg) => {
+      console.log(msg);
+      document.getElementById('log').textContent += msg + '\n';
+    };
+
+    // Show environment info
+    document.getElementById('url').textContent = window.location.href;
+    document.getElementById('secure').textContent = window.isSecureContext ? 'YES' : 'NO (camera will fail)';
+    document.getElementById('gum').textContent = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? 'YES' : 'NO';
+
+    log('Page loaded');
+    log('Protocol: ' + window.location.protocol);
+    log('Hostname: ' + window.location.hostname);
+    log('isSecureContext: ' + window.isSecureContext);
+
+    async function testCamera() {
+      log('\n--- Starting camera test ---');
+
+      if (!navigator.mediaDevices) {
+        log('ERROR: navigator.mediaDevices is undefined');
+        return;
+      }
+
+      if (!navigator.mediaDevices.getUserMedia) {
+        log('ERROR: getUserMedia is not available');
+        return;
+      }
+
+      log('getUserMedia is available, requesting camera...');
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+
+        log('SUCCESS! Camera access granted');
+        log('Stream tracks: ' + stream.getTracks().length);
+
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+
+        video.onloadedmetadata = () => {
+          log('Video metadata loaded');
+          log('Video size: ' + video.videoWidth + 'x' + video.videoHeight);
+        };
+
+      } catch (err) {
+        log('ERROR: ' + err.name + ': ' + err.message);
+
+        if (err.name === 'NotAllowedError') {
+          log('-> Camera permission was denied');
+          log('-> Check browser settings or click allow when prompted');
+        } else if (err.name === 'NotFoundError') {
+          log('-> No camera found on this device');
+        } else if (err.name === 'NotReadableError') {
+          log('-> Camera is in use by another application');
+        } else if (err.name === 'SecurityError') {
+          log('-> Security error - need HTTPS or localhost');
+        }
+      }
+    }
+
+    // Also list available devices
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        log('Video devices found: ' + videoDevices.length);
+        videoDevices.forEach((d, i) => {
+          log('  ' + i + ': ' + (d.label || 'Camera ' + i));
+        });
+      });
+    }
+  </script>
+</body>
+</html>
