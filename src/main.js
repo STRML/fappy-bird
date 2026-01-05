@@ -23,8 +23,8 @@ class FappyBird {
     this.winScoreEl = document.getElementById('win-score');
 
     // Set canvas size
-    this.canvas.width = 400;
-    this.canvas.height = 600;
+    this.canvas.width = 600;
+    this.canvas.height = 900;
 
     // Initialize systems
     this.game = new Game(this.canvas);
