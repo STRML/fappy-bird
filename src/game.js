@@ -113,13 +113,16 @@ export class Game {
     return false;
   }
 
-  update() {
+  update(deltaTime = 16.67) {
     if (this.state !== 'playing' && this.state !== 'ready') return;
     if (this.frozen) return; // Bird stationary until first pump
 
-    // Update bird and pipes with current speed
-    this.bird.update(this.speed);
-    this.pipes.update(this.speed);
+    // Normalize delta time to 60fps baseline (16.67ms per frame)
+    const dt = (deltaTime / 16.67) * this.speed;
+
+    // Update bird and pipes with normalized delta time
+    this.bird.update(dt);
+    this.pipes.update(dt);
 
     // Check scoring
     if (this.pipes.checkScore(this.bird)) {
@@ -144,9 +147,9 @@ export class Game {
       return 'hit';
     }
 
-    // Update background (scaled by speed)
-    this.groundOffset = (this.groundOffset + 2.5 * this.speed) % 24;
-    this.cloudOffset = (this.cloudOffset + 0.5 * this.speed) % this.width;
+    // Update background (scaled by delta time)
+    this.groundOffset = (this.groundOffset + 2.5 * dt) % 24;
+    this.cloudOffset = (this.cloudOffset + 0.5 * dt) % this.width;
 
     return null;
   }

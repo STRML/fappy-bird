@@ -52,6 +52,7 @@ class FappyBird {
     this.detectionInProgress = false;
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     this.detectionInterval = 33; // ~30fps for hand detection
+    this.lastFrameTime = 0; // For delta time calculation
 
     // Bind methods
     this.gameLoop = this.gameLoop.bind(this);
@@ -189,6 +190,10 @@ class FappyBird {
   }
 
   async gameLoop(timestamp) {
+    // Calculate delta time (capped at 50ms to prevent huge jumps on tab switch)
+    const deltaTime = Math.min(timestamp - this.lastFrameTime, 50);
+    this.lastFrameTime = timestamp;
+
     // Hand tracking (throttled, non-blocking)
     if (this.handTrackingEnabled && !this.detectionInProgress &&
         timestamp - this.lastDetectionTime > this.detectionInterval) {
@@ -200,8 +205,8 @@ class FappyBird {
       });
     }
 
-    // Update game
-    const event = this.game.update();
+    // Update game with delta time
+    const event = this.game.update(deltaTime);
 
     if (event === 'score') {
       this.audio.playScore();
