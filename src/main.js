@@ -19,6 +19,21 @@ class FappyBird {
     this.readyScreen = document.getElementById('ready');
     this.gameoverScreen = document.getElementById('gameover');
     this.finalScoreEl = document.getElementById('final-score');
+    this.losePhraseEl = document.getElementById('lose-phrase');
+
+    // Random lose phrases
+    this.losePhrases = [
+      'You Fapped Out!',
+      'Limp Finish!',
+      'Premature Ending!',
+      'Lost Your Grip!',
+      'Hand Cramp!',
+      'Fap Failure!',
+      'Weak Stroke!',
+      'Couldn\'t Keep It Up!',
+      'Wrist Gave Out!',
+      'Performance Issues!'
+    ];
 
     // Set canvas size
     this.canvas.width = 600;
@@ -259,6 +274,7 @@ class FappyBird {
     if (state === 'gameover') {
       this.gameoverScreen.classList.remove('hidden');
       this.finalScoreEl.textContent = score;
+      this.losePhraseEl.textContent = this.losePhrases[Math.floor(Math.random() * this.losePhrases.length)];
     } else {
       this.gameoverScreen.classList.add('hidden');
     }
