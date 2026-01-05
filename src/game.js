@@ -68,7 +68,7 @@ export class Game {
   }
 
   start() {
-    if (this.state === 'menu' || this.state === 'gameover') {
+    if (this.state === 'menu' || this.state === 'gameover' || this.state === 'won') {
       this.reset();
       this.state = 'ready'; // Wait for first pump
       this.frozen = true;
@@ -101,7 +101,7 @@ export class Game {
     } else if (this.state === 'menu') {
       this.start();
       return true;
-    } else if (this.state === 'gameover') {
+    } else if (this.state === 'gameover' || this.state === 'won') {
       this.start();
       return true;
     }
