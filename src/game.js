@@ -68,7 +68,7 @@ export class Game {
   }
 
   start() {
-    if (this.state === 'menu' || this.state === 'gameover' || this.state === 'won') {
+    if (this.state === 'menu' || this.state === 'gameover') {
       this.reset();
       this.state = 'ready'; // Wait for first pump
       this.frozen = true;
@@ -101,7 +101,7 @@ export class Game {
     } else if (this.state === 'menu') {
       this.start();
       return true;
-    } else if (this.state === 'gameover' || this.state === 'won') {
+    } else if (this.state === 'gameover') {
       this.start();
       return true;
     }
@@ -148,11 +148,6 @@ export class Game {
 
   gameOver() {
     this.state = 'gameover';
-    this.saveHighScore();
-  }
-
-  win() {
-    this.state = 'won';
     this.saveHighScore();
   }
 

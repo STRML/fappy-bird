@@ -19,8 +19,6 @@ class FappyBird {
     this.readyScreen = document.getElementById('ready');
     this.gameoverScreen = document.getElementById('gameover');
     this.finalScoreEl = document.getElementById('final-score');
-    this.wonScreen = document.getElementById('won');
-    this.winScoreEl = document.getElementById('win-score');
 
     // Set canvas size
     this.canvas.width = 600;
@@ -70,15 +68,6 @@ class FappyBird {
       this.shareScore();
     });
 
-    document.getElementById('win-retry-btn').addEventListener('click', () => {
-      this.audio.resume();
-      this.startGame();
-    });
-
-    document.getElementById('win-share-btn').addEventListener('click', () => {
-      this.shareScore(true);
-    });
-
     // Camera switch button (only shown on mobile)
     const switchCamBtn = document.getElementById('switch-cam-btn');
     if (switchCamBtn) {
@@ -99,26 +88,32 @@ class FappyBird {
   }
 
   async initHandTracking() {
-    this.updateStatus('Checking camera...');
+    this.updateStatus('Loading...');
+    this.showLoadingOverlay(true);
 
     // Wait a bit for TensorFlow scripts to load
     await new Promise(r => setTimeout(r, 500));
 
     // Check if we're in a secure context (required for camera)
     if (!window.isSecureContext) {
-      this.updateStatus('HTTPS required for camera');
+      this.updateStatus('HTTPS required');
+      this.showLoadingOverlay(false);
       console.warn('Camera requires HTTPS or localhost');
       return;
     }
 
-    this.updateStatus('Initializing camera...');
+    this.updateStatus('Starting camera...');
 
     try {
+      this.updateStatus('Loading AI model...');
       this.handTrackingEnabled = await this.handTracker.init(this.webcam, this.handCanvas);
 
+      this.showLoadingOverlay(false);
       if (this.handTrackingEnabled) {
-        this.updateStatus('Hand tracking ready!');
-        this.webcam.style.display = 'block';
+        this.updateStatus('Ready!');
+        // Hide raw webcam - debug canvas shows video + skeleton
+        this.webcam.style.display = 'none';
+        document.getElementById('debug-overlay').style.display = 'block';
         // Show camera switch button on mobile
         const switchCamBtn = document.getElementById('switch-cam-btn');
         if (switchCamBtn && this.handTracker.canSwitchCamera()) {
@@ -131,8 +126,33 @@ class FappyBird {
       }
     } catch (error) {
       console.error('Hand tracking init error:', error);
-      this.updateStatus('Camera error - use keyboard');
+      this.showLoadingOverlay(false);
+      this.updateStatus('Use keyboard/tap');
       this.webcam.style.display = 'none';
+    }
+  }
+
+  showLoadingOverlay(show) {
+    let overlay = document.getElementById('loading-overlay');
+    if (show) {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+
+        const spinner = document.createElement('div');
+        spinner.className = 'loading-spinner';
+
+        const text = document.createElement('div');
+        text.className = 'loading-text';
+        text.textContent = 'Loading hand tracking...';
+
+        overlay.appendChild(spinner);
+        overlay.appendChild(text);
+        document.getElementById('game-container').appendChild(overlay);
+      }
+      overlay.style.display = 'flex';
+    } else if (overlay) {
+      overlay.style.display = 'none';
     }
   }
 
@@ -150,44 +170,7 @@ class FappyBird {
   startGame() {
     this.game.start();
     this.motionDetector.reset();
-    this.handTracker.resetSquirt();
     this.updateUI();
-  }
-
-  handleWin() {
-    this.game.win();
-    this.audio.playScore(); // Victory sound
-    this.spawnConfetti();
-    this.updateUI();
-  }
-
-  spawnConfetti() {
-    // Create confetti particles
-    const colors = ['#FFD93D', '#E31937', '#4CAF50', '#2196F3', '#9C27B0', '#FF9800'];
-    const container = document.getElementById('game-container');
-
-    for (let i = 0; i < 100; i++) {
-      const confetti = document.createElement('div');
-      confetti.className = 'confetti';
-      confetti.style.cssText = `
-        position: absolute;
-        width: ${5 + Math.random() * 10}px;
-        height: ${5 + Math.random() * 10}px;
-        background: ${colors[Math.floor(Math.random() * colors.length)]};
-        left: ${Math.random() * 100}%;
-        top: -20px;
-        opacity: 1;
-        transform: rotate(${Math.random() * 360}deg);
-        animation: confetti-fall ${2 + Math.random() * 2}s ease-out forwards;
-        animation-delay: ${Math.random() * 0.5}s;
-        z-index: 100;
-        pointer-events: none;
-      `;
-      container.appendChild(confetti);
-
-      // Remove after animation
-      setTimeout(() => confetti.remove(), 5000);
-    }
   }
 
   async gameLoop(timestamp) {
@@ -225,12 +208,6 @@ class FappyBird {
   async processHandTracking() {
     const hand = await this.handTracker.detect();
     const state = this.game.getState();
-
-    // Check for squirt gesture (win condition)
-    if (state === 'playing' && this.handTracker.checkSquirt()) {
-      this.handleWin();
-      return;
-    }
 
     if (hand) {
       // Use hand center (works better for horizontal grip)
@@ -284,14 +261,6 @@ class FappyBird {
       this.finalScoreEl.textContent = score;
     } else {
       this.gameoverScreen.classList.add('hidden');
-    }
-
-    // Win screen
-    if (state === 'won') {
-      this.wonScreen.classList.remove('hidden');
-      this.winScoreEl.textContent = score;
-    } else {
-      this.wonScreen.classList.add('hidden');
     }
   }
 

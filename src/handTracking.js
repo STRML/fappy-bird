@@ -29,11 +29,6 @@ export class HandTracker {
     this.lastValidCenter = null;
     this.lastValidHand = null;
 
-    // Squirt detection: detect motion above the hand
-    this.velocityHistory = [];
-    this.maxVelocityHistory = 5;
-    this.squirtDetected = false;
-    this.previousFrame = null;
   }
 
   async init(videoElement, debugCanvas) {
@@ -208,9 +203,8 @@ export class HandTracker {
         }
       }, [imageBitmap]);
 
-      // Return last known result immediately (non-blocking)
-      // Worker will call onDetectionResult when done
-      return this.processHandResult(this.lastHand ? [this.lastHand] : []);
+      // Return last known hand (don't redraw - worker callback will update)
+      return this.lastHand;
     } catch (error) {
       console.error('Worker detection error:', error);
       return null;
@@ -243,7 +237,6 @@ export class HandTracker {
       this.lastHandCenter = activeHand.center;
       this.lastValidHand = activeHand.hand;
       this.lastValidCenter = activeHand.center;
-      this.trackVelocity(activeHand.center);
       this.drawDebug(activeHand.hand, activeHand.isActive);
       return activeHand.hand;
     }
@@ -307,8 +300,6 @@ export class HandTracker {
         // Store as valid for persistence
         this.lastValidHand = activeHand.hand;
         this.lastValidCenter = activeHand.center;
-        // Track velocity for squirt detection
-        this.trackVelocity(activeHand.center);
         this.drawDebug(activeHand.hand, activeHand.isActive);
         return activeHand.hand;
       }
@@ -392,53 +383,6 @@ export class HandTracker {
     }
     if (!this.lastHand) return null;
     return this.getHandCenter(this.lastHand);
-  }
-
-  // Track velocity for squirt detection
-  trackVelocity(center) {
-    if (!center) return;
-
-    if (this.velocityHistory.length > 0) {
-      const last = this.velocityHistory[this.velocityHistory.length - 1];
-      const velocity = last.y - center.y; // Positive = moving up
-      this.velocityHistory.push({ y: center.y, velocity, time: performance.now() });
-    } else {
-      this.velocityHistory.push({ y: center.y, velocity: 0, time: performance.now() });
-    }
-
-    if (this.velocityHistory.length > this.maxVelocityHistory) {
-      this.velocityHistory.shift();
-    }
-  }
-
-  // Check if squirt gesture detected (hand shoots up rapidly and exits frame)
-  checkSquirt() {
-    if (this.squirtDetected) return true;
-
-    // Need velocity history
-    if (this.velocityHistory.length < 3) return false;
-
-    // Check if hand was moving very fast upward recently
-    const recentVelocities = this.velocityHistory.slice(-3);
-    const avgVelocity = recentVelocities.reduce((sum, v) => sum + v.velocity, 0) / recentVelocities.length;
-
-    // Check if hand is near top of frame or just disappeared while moving fast up
-    const lastY = this.velocityHistory[this.velocityHistory.length - 1].y;
-    const nearTop = lastY < 50; // Near top of frame
-    const movingFastUp = avgVelocity > 15; // Fast upward motion
-
-    // Squirt = hand was moving fast up AND (near top OR hand lost)
-    if (movingFastUp && (nearTop || (this.lostFrames > 0 && this.lostFrames < 5))) {
-      this.squirtDetected = true;
-      return true;
-    }
-
-    return false;
-  }
-
-  resetSquirt() {
-    this.squirtDetected = false;
-    this.velocityHistory = [];
   }
 
   drawDebug(hand, isActive = true) {
