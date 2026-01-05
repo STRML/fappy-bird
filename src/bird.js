@@ -18,11 +18,11 @@ export class Bird {
     this.isFlapping = false;
   }
 
-  update() {
-    // Apply gravity
-    this.velocity += GRAVITY;
+  update(speed = 1) {
+    // Apply gravity (scaled by speed)
+    this.velocity += GRAVITY * speed;
     this.velocity = Math.min(this.velocity, TERMINAL_VELOCITY);
-    this.y += this.velocity;
+    this.y += this.velocity * speed;
 
     // Rotate bird based on velocity (-30 to 90 degrees)
     const targetRotation = Math.min(Math.max(this.velocity * 4, -25), 90);

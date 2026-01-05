@@ -6,22 +6,16 @@ export class MotionDetector {
     this.positions = [];
     this.maxPositions = 10;
     this.smoothedY = null;
-    this.smoothingFactor = 0.4; // Lower = smoother but more lag
+    this.smoothingFactor = 0.5; // Higher = more responsive
 
     // Jump detection parameters
-    this.jumpThreshold = 10; // Minimum upward velocity to trigger jump
-    this.cooldownFrames = 10; // Frames between jumps
+    this.jumpThreshold = 8; // Minimum upward velocity to trigger jump
+    this.cooldownFrames = 8; // Frames between jumps
     this.cooldownTimer = 0;
 
     // State machine
-    this.state = 'idle'; // 'idle' | 'moving_up' | 'cooldown'
-    this.upwardFrames = 0;
-    this.requiredUpwardFrames = 2;
-
-    // Peak detection
-    this.peakVelocity = 0;
-    this.velocityHistory = [];
-    this.maxVelocityHistory = 5;
+    this.state = 'idle'; // 'idle' | 'cooldown'
+    this.lastVelocity = 0;
 
     // Stats for debug
     this.currentVelocity = 0;
@@ -49,32 +43,18 @@ export class MotionDetector {
   getVelocity() {
     if (this.positions.length < 2) return 0;
 
-    // Use weighted average with more recent samples weighted higher
-    const recent = this.positions.slice(-4);
-    let totalVelocity = 0;
-    let totalWeight = 0;
+    // Use only the most recent 2 positions for instant response
+    const len = this.positions.length;
+    const curr = this.positions[len - 1];
+    const prev = this.positions[len - 2];
 
-    for (let i = 1; i < recent.length; i++) {
-      const dy = recent[i].y - recent[i - 1].y;
-      const dt = recent[i].time - recent[i - 1].time;
-      // Normalize to ~60fps (16.67ms per frame)
-      const normalizedVelocity = (dy / Math.max(dt, 1)) * 16.67;
-      // Weight recent samples more heavily
-      const weight = i;
-      totalVelocity += normalizedVelocity * weight;
-      totalWeight += weight;
-    }
+    const dy = curr.y - prev.y;
+    const dt = curr.time - prev.time;
+    // Normalize to ~60fps (16.67ms per frame)
+    const velocity = (dy / Math.max(dt, 1)) * 16.67;
 
-    const avgVelocity = totalWeight > 0 ? totalVelocity / totalWeight : 0;
-    this.currentVelocity = avgVelocity;
-
-    // Track velocity history for peak detection
-    this.velocityHistory.push(avgVelocity);
-    if (this.velocityHistory.length > this.maxVelocityHistory) {
-      this.velocityHistory.shift();
-    }
-
-    return avgVelocity;
+    this.currentVelocity = velocity;
+    return velocity;
   }
 
   update(y) {
@@ -91,42 +71,25 @@ export class MotionDetector {
       this.cooldownTimer--;
     }
 
-    // State machine for debounced jump detection
-    switch (this.state) {
-      case 'idle':
-        // Check for start of upward motion (negative velocity = moving up on screen)
-        if (velocity < -5) {
-          this.state = 'moving_up';
-          this.upwardFrames = 1;
-        }
-        break;
+    // Detect sharp upward motion onset
+    // Trigger when: velocity crosses threshold AND we're accelerating upward
+    const isMovingUp = velocity < -this.jumpThreshold;
+    const justStartedUp = this.lastVelocity > -this.jumpThreshold && isMovingUp;
 
-      case 'moving_up':
-        if (velocity < -5) {
-          this.upwardFrames++;
+    this.lastVelocity = velocity;
 
-          // Trigger jump after consistent upward motion
-          if (this.upwardFrames >= this.requiredUpwardFrames &&
-              velocity < -this.jumpThreshold &&
-              this.cooldownTimer === 0) {
-            this.state = 'cooldown';
-            this.cooldownTimer = this.cooldownFrames;
-            return true; // JUMP!
-          }
-        } else {
-          // Motion stopped or reversed
-          this.state = 'idle';
-          this.upwardFrames = 0;
-        }
-        break;
-
-      case 'cooldown':
-        // Wait for hand to move back down before next jump
-        if (velocity > 3) {
-          this.state = 'idle';
-          this.upwardFrames = 0;
-        }
-        break;
+    if (this.state === 'idle') {
+      // Trigger immediately on sharp upward motion start
+      if (isMovingUp && this.cooldownTimer === 0) {
+        this.state = 'cooldown';
+        this.cooldownTimer = this.cooldownFrames;
+        return true; // JUMP!
+      }
+    } else if (this.state === 'cooldown') {
+      // Wait for hand to stop or move down before allowing next jump
+      if (velocity > 0) {
+        this.state = 'idle';
+      }
     }
 
     return false;
@@ -135,10 +98,8 @@ export class MotionDetector {
   reset() {
     this.positions = [];
     this.smoothedY = null;
-    this.velocityHistory = [];
-    this.peakVelocity = 0;
     this.state = 'idle';
-    this.upwardFrames = 0;
+    this.lastVelocity = 0;
     this.cooldownTimer = 0;
     this.currentVelocity = 0;
   }

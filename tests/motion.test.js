@@ -198,8 +198,8 @@ runner.describe('Motion Detection - Smoothing', () => {
     const detector = new MotionDetector();
     detector.addPosition(100);
     detector.addPosition(200);
-    // With smoothingFactor 0.4: 0.4 * 200 + 0.6 * 100 = 80 + 60 = 140
-    assertEqual(detector.smoothedY, 140, 'should apply exponential smoothing');
+    // With smoothingFactor 0.5: 0.5 * 200 + 0.5 * 100 = 100 + 50 = 150
+    assertEqual(detector.smoothedY, 150, 'should apply exponential smoothing');
   });
 
   runner.test('smoothedY reduces jitter', () => {

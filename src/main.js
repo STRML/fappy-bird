@@ -19,6 +19,8 @@ class FappyBird {
     this.readyScreen = document.getElementById('ready');
     this.gameoverScreen = document.getElementById('gameover');
     this.finalScoreEl = document.getElementById('final-score');
+    this.wonScreen = document.getElementById('won');
+    this.winScoreEl = document.getElementById('win-score');
 
     // Set canvas size
     this.canvas.width = 400;
@@ -64,6 +66,15 @@ class FappyBird {
 
     document.getElementById('share-btn').addEventListener('click', () => {
       this.shareScore();
+    });
+
+    document.getElementById('win-retry-btn').addEventListener('click', () => {
+      this.audio.resume();
+      this.startGame();
+    });
+
+    document.getElementById('win-share-btn').addEventListener('click', () => {
+      this.shareScore(true);
     });
 
     // Start game loop immediately (game works without camera)
@@ -120,7 +131,44 @@ class FappyBird {
   startGame() {
     this.game.start();
     this.motionDetector.reset();
+    this.handTracker.resetSquirt();
     this.updateUI();
+  }
+
+  handleWin() {
+    this.game.win();
+    this.audio.playScore(); // Victory sound
+    this.spawnConfetti();
+    this.updateUI();
+  }
+
+  spawnConfetti() {
+    // Create confetti particles
+    const colors = ['#FFD93D', '#E31937', '#4CAF50', '#2196F3', '#9C27B0', '#FF9800'];
+    const container = document.getElementById('game-container');
+
+    for (let i = 0; i < 100; i++) {
+      const confetti = document.createElement('div');
+      confetti.className = 'confetti';
+      confetti.style.cssText = `
+        position: absolute;
+        width: ${5 + Math.random() * 10}px;
+        height: ${5 + Math.random() * 10}px;
+        background: ${colors[Math.floor(Math.random() * colors.length)]};
+        left: ${Math.random() * 100}%;
+        top: -20px;
+        opacity: 1;
+        transform: rotate(${Math.random() * 360}deg);
+        animation: confetti-fall ${2 + Math.random() * 2}s ease-out forwards;
+        animation-delay: ${Math.random() * 0.5}s;
+        z-index: 100;
+        pointer-events: none;
+      `;
+      container.appendChild(confetti);
+
+      // Remove after animation
+      setTimeout(() => confetti.remove(), 5000);
+    }
   }
 
   async gameLoop(timestamp) {
@@ -152,6 +200,13 @@ class FappyBird {
 
   async processHandTracking() {
     const hand = await this.handTracker.detect();
+    const state = this.game.getState();
+
+    // Check for squirt gesture (win condition)
+    if (state === 'playing' && this.handTracker.checkSquirt()) {
+      this.handleWin();
+      return;
+    }
 
     if (hand) {
       // Use hand center (works better for horizontal grip)
@@ -159,10 +214,9 @@ class FappyBird {
       if (!position) return;
 
       const shouldJump = this.motionDetector.update(position.y);
-      const state = this.game.getState();
 
-      // Allow pump to start from menu, ready, or during play
-      if (shouldJump && (state === 'playing' || state === 'ready' || state === 'menu')) {
+      // Allow pump to start from menu, ready, gameover, won, or during play
+      if (shouldJump && (state === 'playing' || state === 'ready' || state === 'menu' || state === 'gameover' || state === 'won')) {
         this.handleJump();
       }
 
@@ -206,6 +260,14 @@ class FappyBird {
       this.finalScoreEl.textContent = score;
     } else {
       this.gameoverScreen.classList.add('hidden');
+    }
+
+    // Win screen
+    if (state === 'won') {
+      this.wonScreen.classList.remove('hidden');
+      this.winScoreEl.textContent = score;
+    } else {
+      this.wonScreen.classList.add('hidden');
     }
   }
 

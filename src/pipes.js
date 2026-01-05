@@ -15,17 +15,17 @@ export class PipeManager {
     this.spawnInterval = PIPE_SPACING / PIPE_SPEED;
   }
 
-  update() {
-    // Move all pipes left
+  update(speed = 1) {
+    // Move all pipes left (scaled by speed)
     for (const pipe of this.pipes) {
-      pipe.x -= PIPE_SPEED;
+      pipe.x -= PIPE_SPEED * speed;
     }
 
     // Remove off-screen pipes
     this.pipes = this.pipes.filter(pipe => pipe.x > -PIPE_WIDTH);
 
-    // Spawn new pipes
-    this.spawnTimer++;
+    // Spawn new pipes (scaled by speed)
+    this.spawnTimer += speed;
     if (this.spawnTimer >= this.spawnInterval) {
       this.spawnPipe();
       this.spawnTimer = 0;

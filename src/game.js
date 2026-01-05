@@ -21,6 +21,9 @@ export class Game {
     this.score = 0;
     this.highScore = this.loadHighScore();
     this.frozen = true; // Bird doesn't move until first pump
+    this.speed = 0.5; // Start at 50% speed
+    this.speedIncrement = 0.05; // Increase 5% per pipe
+    this.maxSpeed = 1.0; // Cap at 100%
 
     // Background elements
     this.groundOffset = 0;
@@ -67,6 +70,12 @@ export class Game {
     this.pipes.reset();
     this.score = 0;
     this.frozen = true;
+    this.speed = 0.5;
+  }
+
+  updateSpeed() {
+    // Speed = 0.5 + 0.05 * score, capped at maxSpeed
+    this.speed = Math.min(0.5 + this.speedIncrement * this.score, this.maxSpeed);
   }
 
   jump() {
@@ -93,15 +102,14 @@ export class Game {
     if (this.state !== 'playing' && this.state !== 'ready') return;
     if (this.frozen) return; // Bird stationary until first pump
 
-    // Update bird
-    this.bird.update();
-
-    // Update pipes
-    this.pipes.update();
+    // Update bird and pipes with current speed
+    this.bird.update(this.speed);
+    this.pipes.update(this.speed);
 
     // Check scoring
     if (this.pipes.checkScore(this.bird)) {
       this.score++;
+      this.updateSpeed(); // Increase speed after scoring
       return 'score';
     }
 
@@ -121,15 +129,20 @@ export class Game {
       return 'hit';
     }
 
-    // Update background
-    this.groundOffset = (this.groundOffset + 2.5) % 24;
-    this.cloudOffset = (this.cloudOffset + 0.5) % this.width;
+    // Update background (scaled by speed)
+    this.groundOffset = (this.groundOffset + 2.5 * this.speed) % 24;
+    this.cloudOffset = (this.cloudOffset + 0.5 * this.speed) % this.width;
 
     return null;
   }
 
   gameOver() {
     this.state = 'gameover';
+    this.saveHighScore();
+  }
+
+  win() {
+    this.state = 'won';
     this.saveHighScore();
   }
 

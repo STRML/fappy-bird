@@ -13,6 +13,18 @@ export class HandTracker {
     this.handHistories = [[], []]; // History for up to 2 hands
     this.activeHandIndex = -1; // Which hand is the "pumping" hand
     this.historyLength = 10;
+
+    // Persistence: keep tracking for a few frames when hand is lost
+    this.lostFrames = 0;
+    this.maxLostFrames = 8; // Continue using last position for up to 8 frames (~250ms at 30fps)
+    this.lastValidCenter = null;
+    this.lastValidHand = null;
+
+    // Squirt detection: detect motion above the hand
+    this.velocityHistory = [];
+    this.maxVelocityHistory = 5;
+    this.squirtDetected = false;
+    this.previousFrame = null;
   }
 
   async init(videoElement, debugCanvas) {
@@ -74,7 +86,9 @@ export class HandTracker {
         runtime: 'mediapipe',
         solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
         modelType: 'full', // Use full model for better detection of unusual poses
-        maxHands: 2 // Detect both hands, we'll pick the moving one
+        maxHands: 2, // Detect both hands, we'll pick the moving one
+        minDetectionConfidence: 0.5, // Lower threshold to catch more hands (default is 0.5)
+        minTrackingConfidence: 0.5   // Lower tracking threshold for persistence
       });
 
       console.log('Hand detector ready');
@@ -97,10 +111,26 @@ export class HandTracker {
       });
 
       if (hands.length === 0) {
+        // Hand lost - use persistence
+        this.lostFrames++;
+
+        if (this.lostFrames <= this.maxLostFrames && this.lastValidHand) {
+          // Continue using last known position
+          this.lastHand = this.lastValidHand;
+          this.lastHandCenter = this.lastValidCenter;
+          this.drawDebug(this.lastValidHand, false); // Draw dimmed to show it's interpolated
+          return this.lastValidHand;
+        }
+
+        // Truly lost - clear everything
         this.lastHand = null;
+        this.lastHandCenter = null;
         this.clearDebug();
         return null;
       }
+
+      // Hand found - reset lost counter
+      this.lostFrames = 0;
 
       // Get center position for each hand (average of key points)
       // This works better for horizontal grips than just wrist
@@ -113,6 +143,11 @@ export class HandTracker {
       if (activeHand) {
         this.lastHand = activeHand.hand;
         this.lastHandCenter = activeHand.center;
+        // Store as valid for persistence
+        this.lastValidHand = activeHand.hand;
+        this.lastValidCenter = activeHand.center;
+        // Track velocity for squirt detection
+        this.trackVelocity(activeHand.center);
         this.drawDebug(activeHand.hand, activeHand.isActive);
         return activeHand.hand;
       }
@@ -196,6 +231,53 @@ export class HandTracker {
     }
     if (!this.lastHand) return null;
     return this.getHandCenter(this.lastHand);
+  }
+
+  // Track velocity for squirt detection
+  trackVelocity(center) {
+    if (!center) return;
+
+    if (this.velocityHistory.length > 0) {
+      const last = this.velocityHistory[this.velocityHistory.length - 1];
+      const velocity = last.y - center.y; // Positive = moving up
+      this.velocityHistory.push({ y: center.y, velocity, time: performance.now() });
+    } else {
+      this.velocityHistory.push({ y: center.y, velocity: 0, time: performance.now() });
+    }
+
+    if (this.velocityHistory.length > this.maxVelocityHistory) {
+      this.velocityHistory.shift();
+    }
+  }
+
+  // Check if squirt gesture detected (hand shoots up rapidly and exits frame)
+  checkSquirt() {
+    if (this.squirtDetected) return true;
+
+    // Need velocity history
+    if (this.velocityHistory.length < 3) return false;
+
+    // Check if hand was moving very fast upward recently
+    const recentVelocities = this.velocityHistory.slice(-3);
+    const avgVelocity = recentVelocities.reduce((sum, v) => sum + v.velocity, 0) / recentVelocities.length;
+
+    // Check if hand is near top of frame or just disappeared while moving fast up
+    const lastY = this.velocityHistory[this.velocityHistory.length - 1].y;
+    const nearTop = lastY < 50; // Near top of frame
+    const movingFastUp = avgVelocity > 15; // Fast upward motion
+
+    // Squirt = hand was moving fast up AND (near top OR hand lost)
+    if (movingFastUp && (nearTop || (this.lostFrames > 0 && this.lostFrames < 5))) {
+      this.squirtDetected = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  resetSquirt() {
+    this.squirtDetected = false;
+    this.velocityHistory = [];
   }
 
   drawDebug(hand, isActive = true) {

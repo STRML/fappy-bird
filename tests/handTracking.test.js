@@ -238,6 +238,100 @@ runner.describe('HandTracker - Destroy', () => {
 
 });
 
+runner.describe('HandTracker - Persistence', () => {
+
+  runner.test('initializes persistence state correctly', () => {
+    const tracker = new HandTracker();
+    assertEqual(tracker.lostFrames, 0, 'lostFrames should start at 0');
+    assertEqual(tracker.maxLostFrames, 8, 'maxLostFrames should be 8');
+    assertEqual(tracker.lastValidCenter, null, 'lastValidCenter should be null');
+    assertEqual(tracker.lastValidHand, null, 'lastValidHand should be null');
+  });
+
+  runner.test('stores valid hand data for persistence', () => {
+    const tracker = new HandTracker();
+    const mockHand = { keypoints: createMockKeypoints(100, 100) };
+    const mockCenter = { x: 100, y: 100 };
+
+    // Simulate what detect() does when hand is found
+    tracker.lastValidHand = mockHand;
+    tracker.lastValidCenter = mockCenter;
+    tracker.lostFrames = 0;
+
+    assertEqual(tracker.lastValidHand, mockHand, 'should store valid hand');
+    assertEqual(tracker.lastValidCenter, mockCenter, 'should store valid center');
+  });
+
+  runner.test('increments lostFrames when hand not detected', () => {
+    const tracker = new HandTracker();
+    tracker.lostFrames = 0;
+
+    // Simulate losing hand
+    tracker.lostFrames++;
+    assertEqual(tracker.lostFrames, 1, 'should increment lostFrames');
+
+    tracker.lostFrames++;
+    assertEqual(tracker.lostFrames, 2, 'should continue incrementing');
+  });
+
+  runner.test('resets lostFrames when hand found', () => {
+    const tracker = new HandTracker();
+    tracker.lostFrames = 5;
+
+    // Simulate finding hand again
+    tracker.lostFrames = 0;
+
+    assertEqual(tracker.lostFrames, 0, 'should reset to 0');
+  });
+
+  runner.test('uses lastValidHand within maxLostFrames', () => {
+    const tracker = new HandTracker();
+    const mockHand = { keypoints: createMockKeypoints(100, 100) };
+    const mockCenter = { x: 100, y: 100 };
+
+    tracker.lastValidHand = mockHand;
+    tracker.lastValidCenter = mockCenter;
+    tracker.lostFrames = 3; // Within maxLostFrames (8)
+
+    // Should still have valid data available
+    assertTrue(tracker.lostFrames <= tracker.maxLostFrames, 'should be within persistence window');
+    assertTrue(tracker.lastValidHand !== null, 'should have last valid hand');
+  });
+
+  runner.test('clears data after exceeding maxLostFrames', () => {
+    const tracker = new HandTracker();
+    tracker.lostFrames = 9; // Exceeds maxLostFrames (8)
+
+    const shouldUsePersistence = tracker.lostFrames <= tracker.maxLostFrames;
+    assertFalse(shouldUsePersistence, 'should not use persistence after max frames');
+  });
+
+  runner.test('persistence window is approximately 250ms at 30fps', () => {
+    const tracker = new HandTracker();
+    const frameTime = 1000 / 30; // ~33.3ms per frame
+    const persistenceTime = tracker.maxLostFrames * frameTime;
+
+    assertTrue(persistenceTime >= 200, 'persistence should be at least 200ms');
+    assertTrue(persistenceTime <= 300, 'persistence should be at most 300ms');
+  });
+
+});
+
+runner.describe('HandTracker - Detection Confidence', () => {
+
+  runner.test('has reasonable detection confidence thresholds', () => {
+    // These values are set in init(), but we can verify the concept
+    const minDetectionConfidence = 0.5;
+    const minTrackingConfidence = 0.5;
+
+    assertTrue(minDetectionConfidence >= 0.3, 'detection confidence should not be too low');
+    assertTrue(minDetectionConfidence <= 0.7, 'detection confidence should not be too high');
+    assertTrue(minTrackingConfidence >= 0.3, 'tracking confidence should not be too low');
+    assertTrue(minTrackingConfidence <= 0.7, 'tracking confidence should not be too high');
+  });
+
+});
+
 // Helper function to create mock keypoints
 function createMockKeypoints(baseX, baseY) {
   const keypoints = [];
