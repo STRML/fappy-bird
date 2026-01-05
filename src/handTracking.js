@@ -400,14 +400,14 @@ export class HandTracker {
     // Clear
     ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
 
-    // Draw video frame (mirrored to match selfie view)
+    // Draw video frame (mirror only for front camera)
     ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(
-      this.video,
-      -this.debugCanvas.width, 0,
-      this.debugCanvas.width, this.debugCanvas.height
-    );
+    if (this.facingMode === 'user') {
+      ctx.scale(-1, 1);
+      ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
+    } else {
+      ctx.drawImage(this.video, 0, 0, this.debugCanvas.width, this.debugCanvas.height);
+    }
     ctx.restore();
 
     // Draw hand landmarks
@@ -481,10 +481,14 @@ export class HandTracker {
     const ctx = this.debugCtx;
     ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
 
-    // Draw video frame (mirrored)
+    // Draw video frame (mirror only for front camera)
     ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
+    if (this.facingMode === 'user') {
+      ctx.scale(-1, 1);
+      ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
+    } else {
+      ctx.drawImage(this.video, 0, 0, this.debugCanvas.width, this.debugCanvas.height);
+    }
     ctx.restore();
 
     // Just draw center point
@@ -505,14 +509,14 @@ export class HandTracker {
     const ctx = this.debugCtx;
     ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
 
-    // Draw video frame only
+    // Draw video frame only (mirror only for front camera)
     ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(
-      this.video,
-      -this.debugCanvas.width, 0,
-      this.debugCanvas.width, this.debugCanvas.height
-    );
+    if (this.facingMode === 'user') {
+      ctx.scale(-1, 1);
+      ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
+    } else {
+      ctx.drawImage(this.video, 0, 0, this.debugCanvas.width, this.debugCanvas.height);
+    }
     ctx.restore();
 
     // "No hand" indicator

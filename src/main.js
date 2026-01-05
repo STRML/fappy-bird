@@ -272,9 +272,12 @@ class FappyBird {
 
     // Game over screen
     if (state === 'gameover') {
+      // Only set phrase once when first showing
+      if (this.gameoverScreen.classList.contains('hidden')) {
+        this.losePhraseEl.textContent = this.losePhrases[Math.floor(Math.random() * this.losePhrases.length)];
+      }
       this.gameoverScreen.classList.remove('hidden');
       this.finalScoreEl.textContent = score;
-      this.losePhraseEl.textContent = this.losePhrases[Math.floor(Math.random() * this.losePhrases.length)];
     } else {
       this.gameoverScreen.classList.add('hidden');
     }
