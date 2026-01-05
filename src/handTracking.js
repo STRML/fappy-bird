@@ -59,14 +59,14 @@ export class HandTracker {
         return false;
       }
 
-      // Initialize hand detector with mobile-optimized settings
+      // Initialize hand detector
       console.log('Initializing hand detector...');
       const model = handPoseDetection.SupportedModels.MediaPipeHands;
       this.detector = await handPoseDetection.createDetector(model, {
         runtime: 'mediapipe',
         solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
-        modelType: this.isMobile ? 'lite' : 'full', // Lite model for mobile performance
-        maxHands: this.isMobile ? 1 : 2, // Single hand on mobile for speed
+        modelType: 'full',
+        maxHands: 2,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
       });
@@ -90,8 +90,8 @@ export class HandTracker {
     console.log(`Requesting camera access (${this.facingMode})...`);
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: this.isMobile ? 480 : 640 },
-        height: { ideal: this.isMobile ? 360 : 480 },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
         facingMode: this.facingMode,
         frameRate: { ideal: 30 }
       },
@@ -311,6 +311,11 @@ export class HandTracker {
 
   drawDebug(hand, isActive = true) {
     if (!this.debugCtx || !this.debugCanvas) return;
+    // Skip detailed drawing on mobile for performance
+    if (this.isMobile) {
+      this.drawDebugSimple(hand);
+      return;
+    }
 
     const ctx = this.debugCtx;
     const scaleX = this.debugCanvas.width / this.video.videoWidth;
@@ -392,6 +397,29 @@ export class HandTracker {
       ctx.moveTo(cx, cy - 12);
       ctx.lineTo(cx, cy + 12);
       ctx.stroke();
+    }
+  }
+
+  // Simplified debug drawing for mobile - just video + center point
+  drawDebugSimple(hand) {
+    const ctx = this.debugCtx;
+    ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
+
+    // Draw video frame (mirrored)
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
+    ctx.restore();
+
+    // Just draw center point
+    const center = this.getHandCenter(hand);
+    if (center) {
+      const scaleX = this.debugCanvas.width / this.video.videoWidth;
+      const scaleY = this.debugCanvas.height / this.video.videoHeight;
+      ctx.fillStyle = '#00ff00';
+      ctx.beginPath();
+      ctx.arc(center.x * scaleX, center.y * scaleY, 6, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 

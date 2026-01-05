@@ -36,9 +36,8 @@ class FappyBird {
     // State
     this.handTrackingEnabled = false;
     this.lastDetectionTime = 0;
-    // Slower detection on mobile for better performance
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    this.detectionInterval = this.isMobile ? 66 : 33; // ~15fps on mobile, ~30fps on desktop
+    this.detectionInterval = 33; // ~30fps for hand detection
 
     // Bind methods
     this.gameLoop = this.gameLoop.bind(this);

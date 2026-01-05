@@ -12,6 +12,9 @@ export class Game {
     this.width = canvas.width;
     this.height = canvas.height;
 
+    // Mobile detection for performance optimizations
+    this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
     // Game objects
     this.bird = new Bird(80, this.height / 2);
     this.pipes = new PipeManager(this.width, this.height, GROUND_HEIGHT);
@@ -30,13 +33,20 @@ export class Game {
     this.cloudOffset = 0;
     this.clouds = this.generateClouds();
 
+    // Cache sky gradient for performance
+    this.skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.height);
+    this.skyGradient.addColorStop(0, '#87CEEB');
+    this.skyGradient.addColorStop(0.7, '#E0F6FF');
+    this.skyGradient.addColorStop(1, '#87CEEB');
+
     // Animation
     this.lastTime = 0;
   }
 
   generateClouds() {
     const clouds = [];
-    for (let i = 0; i < 5; i++) {
+    const count = this.isMobile ? 3 : 5; // Fewer clouds on mobile
+    for (let i = 0; i < count; i++) {
       clouds.push({
         x: Math.random() * this.width,
         y: 30 + Math.random() * 100,
@@ -149,12 +159,8 @@ export class Game {
   render() {
     const ctx = this.ctx;
 
-    // Sky gradient
-    const skyGradient = ctx.createLinearGradient(0, 0, 0, this.height);
-    skyGradient.addColorStop(0, '#87CEEB');
-    skyGradient.addColorStop(0.7, '#E0F6FF');
-    skyGradient.addColorStop(1, '#87CEEB');
-    ctx.fillStyle = skyGradient;
+    // Sky gradient (cached)
+    ctx.fillStyle = this.skyGradient;
     ctx.fillRect(0, 0, this.width, this.height);
 
     // Clouds
@@ -190,21 +196,27 @@ export class Game {
     ctx.fillStyle = '#8B4513';
     ctx.fillRect(0, groundY + 20, this.width, GROUND_HEIGHT - 20);
 
-    // Grass top
-    const grassGradient = ctx.createLinearGradient(0, groundY, 0, groundY + 25);
-    grassGradient.addColorStop(0, '#228B22');
-    grassGradient.addColorStop(1, '#2E8B57');
-    ctx.fillStyle = grassGradient;
+    // Grass top - use solid color on mobile, gradient on desktop
+    if (this.isMobile) {
+      ctx.fillStyle = '#228B22';
+    } else {
+      const grassGradient = ctx.createLinearGradient(0, groundY, 0, groundY + 25);
+      grassGradient.addColorStop(0, '#228B22');
+      grassGradient.addColorStop(1, '#2E8B57');
+      ctx.fillStyle = grassGradient;
+    }
     ctx.fillRect(0, groundY, this.width, 25);
 
-    // Grass pattern
-    ctx.fillStyle = '#1E7A1E';
-    for (let i = -this.groundOffset; i < this.width + 24; i += 24) {
-      ctx.beginPath();
-      ctx.moveTo(i, groundY);
-      ctx.lineTo(i + 12, groundY + 10);
-      ctx.lineTo(i + 24, groundY);
-      ctx.fill();
+    // Grass pattern - skip on mobile for performance
+    if (!this.isMobile) {
+      ctx.fillStyle = '#1E7A1E';
+      for (let i = -this.groundOffset; i < this.width + 24; i += 24) {
+        ctx.beginPath();
+        ctx.moveTo(i, groundY);
+        ctx.lineTo(i + 12, groundY + 10);
+        ctx.lineTo(i + 24, groundY);
+        ctx.fill();
+      }
     }
 
     // Grass highlight
