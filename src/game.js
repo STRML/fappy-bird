@@ -27,6 +27,9 @@ export class Game {
     this.speed = 0.5; // Start at 50% speed
     this.speedIncrement = 0.05; // Increase 5% per pipe
     this.maxSpeed = 1.0; // Cap at 100%
+    this.gap = 200; // Start with wider gap
+    this.gapDecrement = 4; // Decrease 4px per pipe
+    this.minGap = 160; // Cap at minimum gap
     this.gameOverTime = 0; // When game over started
     this.restartCooldown = 3000; // 3 seconds before pump can restart
 
@@ -83,11 +86,14 @@ export class Game {
     this.score = 0;
     this.frozen = true;
     this.speed = 0.5;
+    this.gap = 200;
   }
 
-  updateSpeed() {
+  updateDifficulty() {
     // Speed = 0.5 + 0.05 * score, capped at maxSpeed
     this.speed = Math.min(0.5 + this.speedIncrement * this.score, this.maxSpeed);
+    // Gap = 200 - 4 * score, capped at minGap
+    this.gap = Math.max(200 - this.gapDecrement * this.score, this.minGap);
   }
 
   jump() {
@@ -122,12 +128,12 @@ export class Game {
 
     // Update bird and pipes with normalized delta time
     this.bird.update(dt);
-    this.pipes.update(dt);
+    this.pipes.update(dt, this.gap);
 
     // Check scoring
     if (this.pipes.checkScore(this.bird)) {
       this.score++;
-      this.updateSpeed(); // Increase speed after scoring
+      this.updateDifficulty(); // Increase speed and decrease gap after scoring
       return 'score';
     }
 

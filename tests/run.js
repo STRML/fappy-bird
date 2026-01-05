@@ -374,39 +374,69 @@ describe('Game - Speed Ramping', () => {
   test('speed increases by 5% per pipe', () => {
     const game = new Game(mockCanvas);
     game.score = 1;
-    game.updateSpeed();
+    game.updateDifficulty();
     assertEqual(game.speed, 0.55); // 0.5 + 0.05 * 1
   });
 
   test('speed at score 5', () => {
     const game = new Game(mockCanvas);
     game.score = 5;
-    game.updateSpeed();
+    game.updateDifficulty();
     assertEqual(game.speed, 0.75); // 0.5 + 0.05 * 5
   });
 
   test('speed reaches 1.0 at score 10', () => {
     const game = new Game(mockCanvas);
     game.score = 10;
-    game.updateSpeed();
+    game.updateDifficulty();
     assertEqual(game.speed, 1.0); // 0.5 + 0.05 * 10
   });
 
   test('speed caps at 1.0 beyond score 10', () => {
     const game = new Game(mockCanvas);
     game.score = 20;
-    game.updateSpeed();
+    game.updateDifficulty();
     assertEqual(game.speed, 1.0); // capped
   });
 });
 
+describe('Game - Gap Ramping', () => {
+  test('gap starts at 200', () => {
+    const game = new Game(mockCanvas);
+    assertEqual(game.gap, 200);
+  });
+
+  test('gap decreases by 4px per pipe', () => {
+    const game = new Game(mockCanvas);
+    game.score = 1;
+    game.updateDifficulty();
+    assertEqual(game.gap, 196); // 200 - 4 * 1
+  });
+
+  test('gap reaches 160 at score 10', () => {
+    const game = new Game(mockCanvas);
+    game.score = 10;
+    game.updateDifficulty();
+    assertEqual(game.gap, 160); // 200 - 4 * 10
+  });
+
+  test('gap caps at 160 beyond score 10', () => {
+    const game = new Game(mockCanvas);
+    game.score = 20;
+    game.updateDifficulty();
+    assertEqual(game.gap, 160); // capped
+  });
+});
+
 describe('Game - Reset', () => {
-  test('reset restores initial speed', () => {
+  test('reset restores initial speed and gap', () => {
     const game = new Game(mockCanvas);
     game.speed = 1.0;
+    game.gap = 160;
     game.score = 10;
     game.reset();
     assertEqual(game.speed, 0.5);
+    assertEqual(game.gap, 200);
   });
 });
 

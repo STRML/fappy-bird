@@ -1,6 +1,7 @@
 // Pipe generation and management
 
-export const PIPE_GAP = 160;
+export const PIPE_GAP_START = 200;
+export const PIPE_GAP_MIN = 160;
 export const PIPE_WIDTH = 60;
 export const PIPE_SPEED = 2.5;
 export const PIPE_SPACING = 220;
@@ -15,7 +16,7 @@ export class PipeManager {
     this.spawnInterval = PIPE_SPACING / PIPE_SPEED;
   }
 
-  update(speed = 1) {
+  update(speed = 1, gap = PIPE_GAP_MIN) {
     // Move all pipes left (scaled by speed)
     for (const pipe of this.pipes) {
       pipe.x -= PIPE_SPEED * speed;
@@ -27,21 +28,21 @@ export class PipeManager {
     // Spawn new pipes (scaled by speed)
     this.spawnTimer += speed;
     if (this.spawnTimer >= this.spawnInterval) {
-      this.spawnPipe();
+      this.spawnPipe(gap);
       this.spawnTimer = 0;
     }
   }
 
-  spawnPipe() {
+  spawnPipe(gap = PIPE_GAP_MIN) {
     const playableHeight = this.canvasHeight - this.groundHeight;
     const minY = 80;
-    const maxY = playableHeight - PIPE_GAP - 80;
+    const maxY = playableHeight - gap - 80;
     const gapY = Math.random() * (maxY - minY) + minY;
 
     this.pipes.push({
       x: this.canvasWidth,
       gapTop: gapY,
-      gapBottom: gapY + PIPE_GAP,
+      gapBottom: gapY + gap,
       scored: false
     });
   }

@@ -1,7 +1,7 @@
 // Bird physics and rendering
 
 export const GRAVITY = 0.4;
-export const JUMP_VELOCITY = -8;
+export const JUMP_VELOCITY = -7.5;
 export const TERMINAL_VELOCITY = 10;
 
 export class Bird {
