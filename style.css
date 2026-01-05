@@ -278,8 +278,8 @@ button:active {
 }
 
 @keyframes pump {
-  0%, 100% { transform: translateY(20px) rotate(90deg); }
-  50% { transform: translateY(-20px) rotate(90deg); }
+  0%, 100% { transform: translateY(20px) rotate(-90deg); }
+  50% { transform: translateY(-20px) rotate(-90deg); }
 }
 
 @keyframes arrow-pulse {
