@@ -36,7 +36,9 @@ class FappyBird {
     // State
     this.handTrackingEnabled = false;
     this.lastDetectionTime = 0;
-    this.detectionInterval = 33; // ~30fps for hand detection
+    // Slower detection on mobile for better performance
+    this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    this.detectionInterval = this.isMobile ? 66 : 33; // ~15fps on mobile, ~30fps on desktop
 
     // Bind methods
     this.gameLoop = this.gameLoop.bind(this);
@@ -77,6 +79,18 @@ class FappyBird {
       this.shareScore(true);
     });
 
+    // Camera switch button (only shown on mobile)
+    const switchCamBtn = document.getElementById('switch-cam-btn');
+    if (switchCamBtn) {
+      switchCamBtn.addEventListener('click', async () => {
+        if (this.handTracker.canSwitchCamera()) {
+          this.updateStatus('Switching camera...');
+          await this.handTracker.switchCamera();
+          this.updateStatus('Camera switched');
+        }
+      });
+    }
+
     // Start game loop immediately (game works without camera)
     requestAnimationFrame(this.gameLoop);
 
@@ -105,6 +119,11 @@ class FappyBird {
       if (this.handTrackingEnabled) {
         this.updateStatus('Hand tracking ready!');
         this.webcam.style.display = 'block';
+        // Show camera switch button on mobile
+        const switchCamBtn = document.getElementById('switch-cam-btn');
+        if (switchCamBtn && this.handTracker.canSwitchCamera()) {
+          switchCamBtn.style.display = 'block';
+        }
       } else {
         this.updateStatus('Use keyboard/tap');
         this.webcam.style.display = 'none';

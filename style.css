@@ -69,6 +69,28 @@ body {
   border-radius: 0 0 8px 8px;
 }
 
+#switch-cam-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 12;
+}
+
+#switch-cam-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 #ui-overlay {
   position: absolute;
   top: 0;

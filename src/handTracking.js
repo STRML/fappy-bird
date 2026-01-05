@@ -9,6 +9,10 @@ export class HandTracker {
     this.debugCanvas = null;
     this.debugCtx = null;
 
+    // Camera settings
+    this.facingMode = 'user'; // 'user' = front, 'environment' = back
+    this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
     // Track hand positions to identify the moving hand
     this.handHistories = [[], []]; // History for up to 2 hands
     this.activeHandIndex = -1; // Which hand is the "pumping" hand
@@ -40,30 +44,7 @@ export class HandTracker {
       }
 
       // Start camera
-      console.log('Requesting camera access...');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'user',
-          frameRate: { ideal: 30 }
-        },
-        audio: false
-      });
-
-      console.log('Camera access granted');
-      this.video.srcObject = stream;
-
-      await new Promise((resolve, reject) => {
-        this.video.onloadedmetadata = () => {
-          this.video.play().then(resolve).catch(reject);
-        };
-        this.video.onerror = reject;
-        // Timeout after 5 seconds
-        setTimeout(() => reject(new Error('Video load timeout')), 5000);
-      });
-
-      console.log('Video playing');
+      await this.startCamera();
 
       // Set debug canvas size
       if (this.debugCanvas) {
@@ -74,21 +55,20 @@ export class HandTracker {
       // Check if handPoseDetection is available
       if (typeof handPoseDetection === 'undefined') {
         console.warn('handPoseDetection not loaded, using camera-only mode');
-        // Camera works but no hand detection - still useful for debugging
         this.isReady = false;
         return false;
       }
 
-      // Initialize hand detector
+      // Initialize hand detector with mobile-optimized settings
       console.log('Initializing hand detector...');
       const model = handPoseDetection.SupportedModels.MediaPipeHands;
       this.detector = await handPoseDetection.createDetector(model, {
         runtime: 'mediapipe',
         solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
-        modelType: 'full', // Use full model for better detection of unusual poses
-        maxHands: 2, // Detect both hands, we'll pick the moving one
-        minDetectionConfidence: 0.5, // Lower threshold to catch more hands (default is 0.5)
-        minTrackingConfidence: 0.5   // Lower tracking threshold for persistence
+        modelType: this.isMobile ? 'lite' : 'full', // Lite model for mobile performance
+        maxHands: this.isMobile ? 1 : 2, // Single hand on mobile for speed
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
       });
 
       console.log('Hand detector ready');
@@ -98,6 +78,55 @@ export class HandTracker {
       console.error('Hand tracking initialization failed:', error);
       return false;
     }
+  }
+
+  async startCamera() {
+    // Stop existing stream if any
+    if (this.video && this.video.srcObject) {
+      const tracks = this.video.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+    }
+
+    console.log(`Requesting camera access (${this.facingMode})...`);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: this.isMobile ? 480 : 640 },
+        height: { ideal: this.isMobile ? 360 : 480 },
+        facingMode: this.facingMode,
+        frameRate: { ideal: 30 }
+      },
+      audio: false
+    });
+
+    console.log('Camera access granted');
+    this.video.srcObject = stream;
+
+    await new Promise((resolve, reject) => {
+      this.video.onloadedmetadata = () => {
+        this.video.play().then(resolve).catch(reject);
+      };
+      this.video.onerror = reject;
+      setTimeout(() => reject(new Error('Video load timeout')), 5000);
+    });
+
+    console.log('Video playing');
+  }
+
+  async switchCamera() {
+    this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
+    try {
+      await this.startCamera();
+      return true;
+    } catch (error) {
+      console.error('Failed to switch camera:', error);
+      // Revert to previous camera
+      this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
+      return false;
+    }
+  }
+
+  canSwitchCamera() {
+    return this.isMobile; // Only show switch on mobile where front/back matters
   }
 
   async detect() {
