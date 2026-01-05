@@ -36,6 +36,7 @@ class FappyBird {
     // State
     this.handTrackingEnabled = false;
     this.lastDetectionTime = 0;
+    this.detectionInProgress = false;
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     this.detectionInterval = 33; // ~30fps for hand detection
 
@@ -190,10 +191,15 @@ class FappyBird {
   }
 
   async gameLoop(timestamp) {
-    // Hand tracking (throttled)
-    if (this.handTrackingEnabled && timestamp - this.lastDetectionTime > this.detectionInterval) {
+    // Hand tracking (throttled, non-blocking)
+    if (this.handTrackingEnabled && !this.detectionInProgress &&
+        timestamp - this.lastDetectionTime > this.detectionInterval) {
       this.lastDetectionTime = timestamp;
-      await this.processHandTracking();
+      this.detectionInProgress = true;
+      // Don't await - let detection run in background
+      this.processHandTracking().finally(() => {
+        this.detectionInProgress = false;
+      });
     }
 
     // Update game

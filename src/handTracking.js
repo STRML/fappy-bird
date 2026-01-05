@@ -3,6 +3,8 @@
 export class HandTracker {
   constructor() {
     this.detector = null;
+    this.worker = null;
+    this.useWorker = true; // Try worker first, fall back to main thread
     this.video = null;
     this.isReady = false;
     this.lastHand = null;
@@ -12,6 +14,9 @@ export class HandTracker {
     // Camera settings
     this.facingMode = 'user'; // 'user' = front, 'environment' = back
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // Worker callback for async results
+    this.onDetectionResult = null;
 
     // Track hand positions to identify the moving hand
     this.handHistories = [[], []]; // History for up to 2 hands
@@ -52,15 +57,34 @@ export class HandTracker {
         this.debugCanvas.height = 90;
       }
 
-      // Check if handPoseDetection is available
+      // Try to use worker for better performance
+      if (this.useWorker) {
+        try {
+          console.log('Initializing hand detector in worker...');
+          await this.initWorker();
+
+          // Set up callback to process worker results
+          this.onDetectionResult = (hands) => {
+            this.processHandResult(hands || []);
+          };
+
+          console.log('Worker-based hand detector ready');
+          this.isReady = true;
+          return true;
+        } catch (error) {
+          console.warn('Worker init failed, falling back to main thread:', error);
+          this.useWorker = false;
+        }
+      }
+
+      // Fallback: main thread detection
       if (typeof handPoseDetection === 'undefined') {
         console.warn('handPoseDetection not loaded, using camera-only mode');
         this.isReady = false;
         return false;
       }
 
-      // Initialize hand detector
-      console.log('Initializing hand detector...');
+      console.log('Initializing hand detector on main thread...');
       const model = handPoseDetection.SupportedModels.MediaPipeHands;
       this.detector = await handPoseDetection.createDetector(model, {
         runtime: 'mediapipe',
@@ -78,6 +102,47 @@ export class HandTracker {
       console.error('Hand tracking initialization failed:', error);
       return false;
     }
+  }
+
+  async initWorker() {
+    return new Promise((resolve, reject) => {
+      this.worker = new Worker('src/handWorker.js');
+
+      const timeout = setTimeout(() => {
+        reject(new Error('Worker init timeout'));
+      }, 30000); // 30s timeout for model loading
+
+      this.worker.onmessage = (e) => {
+        const { type, hands, error } = e.data;
+
+        if (type === 'ready') {
+          clearTimeout(timeout);
+          resolve();
+        } else if (type === 'error') {
+          clearTimeout(timeout);
+          reject(new Error(error));
+        } else if (type === 'result') {
+          // Handle detection result
+          if (this.onDetectionResult) {
+            this.onDetectionResult(hands);
+          }
+        }
+      };
+
+      this.worker.onerror = (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      };
+
+      // Initialize worker with video dimensions
+      this.worker.postMessage({
+        type: 'init',
+        data: {
+          width: this.video.videoWidth || 640,
+          height: this.video.videoHeight || 480
+        }
+      });
+    });
   }
 
   async startCamera() {
@@ -129,8 +194,75 @@ export class HandTracker {
     return this.isMobile; // Only show switch on mobile where front/back matters
   }
 
+  async detectWithWorker() {
+    try {
+      // Create ImageBitmap from video frame
+      const imageBitmap = await createImageBitmap(this.video);
+
+      // Send to worker (transfer ownership for performance)
+      this.worker.postMessage({
+        type: 'detect',
+        data: {
+          imageBitmap,
+          timestamp: performance.now()
+        }
+      }, [imageBitmap]);
+
+      // Return last known result immediately (non-blocking)
+      // Worker will call onDetectionResult when done
+      return this.processHandResult(this.lastHand ? [this.lastHand] : []);
+    } catch (error) {
+      console.error('Worker detection error:', error);
+      return null;
+    }
+  }
+
+  // Process hands array and update internal state
+  processHandResult(hands) {
+    if (hands.length === 0) {
+      this.lostFrames++;
+      if (this.lostFrames <= this.maxLostFrames && this.lastValidHand) {
+        this.lastHand = this.lastValidHand;
+        this.lastHandCenter = this.lastValidCenter;
+        this.drawDebug(this.lastValidHand, false);
+        return this.lastValidHand;
+      }
+      this.lastHand = null;
+      this.lastHandCenter = null;
+      this.clearDebug();
+      return null;
+    }
+
+    this.lostFrames = 0;
+    const handPositions = hands.map(hand => this.getHandCenter(hand));
+    this.updateHandHistories(handPositions);
+    const activeHand = this.selectActiveHand(hands, handPositions);
+
+    if (activeHand) {
+      this.lastHand = activeHand.hand;
+      this.lastHandCenter = activeHand.center;
+      this.lastValidHand = activeHand.hand;
+      this.lastValidCenter = activeHand.center;
+      this.trackVelocity(activeHand.center);
+      this.drawDebug(activeHand.hand, activeHand.isActive);
+      return activeHand.hand;
+    }
+
+    return hands[0];
+  }
+
   async detect() {
-    if (!this.isReady || !this.detector || !this.video) {
+    if (!this.isReady || !this.video) {
+      return null;
+    }
+
+    // Worker-based detection
+    if (this.useWorker && this.worker) {
+      return this.detectWithWorker();
+    }
+
+    // Main thread detection (fallback)
+    if (!this.detector) {
       return null;
     }
 

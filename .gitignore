@@ -14,3 +14,4 @@ node_modules/
 
 # Local settings
 .claude/
+Trace-*.json*
