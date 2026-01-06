@@ -411,16 +411,17 @@ export class HandTracker {
     ctx.restore();
 
     // Draw hand landmarks
-    // Note: flipHorizontal:true in detection means keypoints are already mirrored
-    // We need to flip x again to match our mirrored video display
+    // For front camera: video is mirrored, so flip keypoint X to match
     const color = isActive ? '#00ff00' : '#666666';
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
 
+    // Helper to flip X coordinate for front camera to match mirrored video
+    const flipX = (x) => this.facingMode === 'user' ? (this.debugCanvas.width - x) : x;
+
     for (const point of hand.keypoints) {
-      // Keypoints from detection with flipHorizontal need to be re-flipped for mirrored canvas
-      const x = point.x * scaleX;
+      const x = flipX(point.x * scaleX);
       const y = point.y * scaleY;
 
       ctx.beginPath();
@@ -441,9 +442,9 @@ export class HandTracker {
     for (const [i, j] of connections) {
       const p1 = hand.keypoints[i];
       const p2 = hand.keypoints[j];
-      const x1 = p1.x * scaleX;
+      const x1 = flipX(p1.x * scaleX);
       const y1 = p1.y * scaleY;
-      const x2 = p2.x * scaleX;
+      const x2 = flipX(p2.x * scaleX);
       const y2 = p2.y * scaleY;
 
       ctx.beginPath();
@@ -455,7 +456,7 @@ export class HandTracker {
     // Draw tracked center point (yellow crosshair)
     const center = this.getHandCenter(hand);
     if (center && isActive) {
-      const cx = center.x * scaleX;
+      const cx = flipX(center.x * scaleX);
       const cy = center.y * scaleY;
 
       ctx.strokeStyle = '#FFD93D';
@@ -496,9 +497,13 @@ export class HandTracker {
     if (center) {
       const scaleX = this.debugCanvas.width / this.video.videoWidth;
       const scaleY = this.debugCanvas.height / this.video.videoHeight;
+      // Flip X for front camera to match mirrored video
+      const cx = this.facingMode === 'user'
+        ? (this.debugCanvas.width - center.x * scaleX)
+        : center.x * scaleX;
       ctx.fillStyle = '#00ff00';
       ctx.beginPath();
-      ctx.arc(center.x * scaleX, center.y * scaleY, 6, 0, Math.PI * 2);
+      ctx.arc(cx, center.y * scaleY, 6, 0, Math.PI * 2);
       ctx.fill();
     }
   }
