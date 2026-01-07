@@ -417,8 +417,8 @@ export class HandTracker {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
 
-    // Helper to flip X coordinate for front camera to match mirrored video
-    const flipX = (x) => this.facingMode === 'user' ? (this.debugCanvas.width - x) : x;
+    // Helper to flip X coordinate to match mirrored video (CSS scaleX(-1) on webcam)
+    const flipX = (x) => this.debugCanvas.width - x;
 
     for (const point of hand.keypoints) {
       const x = flipX(point.x * scaleX);
@@ -497,10 +497,8 @@ export class HandTracker {
     if (center) {
       const scaleX = this.debugCanvas.width / this.video.videoWidth;
       const scaleY = this.debugCanvas.height / this.video.videoHeight;
-      // Flip X for front camera to match mirrored video
-      const cx = this.facingMode === 'user'
-        ? (this.debugCanvas.width - center.x * scaleX)
-        : center.x * scaleX;
+      // Always flip X to match mirrored video (CSS scaleX(-1) on webcam)
+      const cx = this.debugCanvas.width - center.x * scaleX;
       ctx.fillStyle = '#00ff00';
       ctx.beginPath();
       ctx.arc(cx, center.y * scaleY, 6, 0, Math.PI * 2);
