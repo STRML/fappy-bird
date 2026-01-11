@@ -104,8 +104,29 @@ class FappyBird {
     // Start game loop immediately (game works without camera)
     requestAnimationFrame(this.gameLoop);
 
-    // Don't auto-init hand tracking - wait for user to click the button
-    this.updateStatus('');
+    // Check if we already have camera permission and auto-enable if so
+    this.checkExistingCameraPermission();
+  }
+
+  async checkExistingCameraPermission() {
+    // Check if Permissions API is available
+    if (!navigator.permissions || !navigator.permissions.query) {
+      this.updateStatus('');
+      return;
+    }
+
+    try {
+      const result = await navigator.permissions.query({ name: 'camera' });
+      if (result.state === 'granted') {
+        // Already have permission, auto-init hand tracking
+        this.initHandTracking();
+      } else {
+        this.updateStatus('');
+      }
+    } catch (e) {
+      // Permissions API not supported for camera, fall back to manual
+      this.updateStatus('');
+    }
   }
 
   async initHandTracking() {
