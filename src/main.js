@@ -96,14 +96,23 @@ class FappyBird {
       });
     }
 
+    // Setup enable camera button
+    document.getElementById('enable-camera-btn').addEventListener('click', () => {
+      this.initHandTracking();
+    });
+
     // Start game loop immediately (game works without camera)
     requestAnimationFrame(this.gameLoop);
 
-    // Try to initialize hand tracking (async, non-blocking)
-    this.initHandTracking();
+    // Don't auto-init hand tracking - wait for user to click the button
+    this.updateStatus('');
   }
 
   async initHandTracking() {
+    const enableBtn = document.getElementById('enable-camera-btn');
+    enableBtn.disabled = true;
+    enableBtn.textContent = 'Loading...';
+
     this.updateStatus('Loading...');
     this.showLoadingOverlay(true);
 
@@ -114,6 +123,7 @@ class FappyBird {
     if (!window.isSecureContext) {
       this.updateStatus('HTTPS required');
       this.showLoadingOverlay(false);
+      enableBtn.textContent = 'HTTPS Required';
       console.warn('Camera requires HTTPS or localhost');
       return;
     }
@@ -127,6 +137,7 @@ class FappyBird {
       this.showLoadingOverlay(false);
       if (this.handTrackingEnabled) {
         this.updateStatus('Ready!');
+        enableBtn.textContent = 'Hand Tracking Enabled';
         // Hide raw webcam - debug canvas shows video + skeleton
         this.webcam.style.display = 'none';
         document.getElementById('debug-overlay').style.display = 'block';
@@ -136,14 +147,18 @@ class FappyBird {
           switchCamBtn.style.display = 'block';
         }
       } else {
-        this.updateStatus('Use keyboard/tap');
+        this.updateStatus('Camera denied');
+        enableBtn.textContent = 'Enable Hand Tracking';
+        enableBtn.disabled = false;
         this.webcam.style.display = 'none';
         document.getElementById('debug-overlay').style.display = 'none';
       }
     } catch (error) {
       console.error('Hand tracking init error:', error);
       this.showLoadingOverlay(false);
-      this.updateStatus('Use keyboard/tap');
+      this.updateStatus('Camera error');
+      enableBtn.textContent = 'Enable Hand Tracking';
+      enableBtn.disabled = false;
       this.webcam.style.display = 'none';
     }
   }

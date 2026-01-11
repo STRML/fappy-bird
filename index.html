@@ -21,21 +21,24 @@
   <div id="game-container">
     <video id="webcam" autoplay playsinline muted></video>
     <canvas id="game"></canvas>
-    <div id="debug-overlay">
+    <div id="debug-overlay" style="display:none;">
       <canvas id="hand-canvas"></canvas>
-      <div id="status">Initializing...</div>
+      <div id="status"></div>
       <button id="switch-cam-btn" style="display:none;">↺</button>
     </div>
     <div id="ui-overlay">
       <div id="menu" class="screen">
         <h1>FAPPY BIRD</h1>
         <p class="tagline">A game of skill, endurance, and wrist stamina</p>
-        <button id="start-btn">Start Fapping</button>
         <p class="instructions">
           Hold something cylindrical (like a Pringles can)<br>
           and move your hand up and down to make the bird jump.
         </p>
         <p class="fallback">Or just press SPACE / tap the screen</p>
+        <div class="menu-buttons">
+          <button id="start-btn">Start Fapping</button>
+          <button id="enable-camera-btn" class="secondary-btn">Enable Hand Tracking</button>
+        </div>
       </div>
       <div id="ready" class="screen hidden">
         <div class="tutorial">
