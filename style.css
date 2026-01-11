@@ -212,15 +212,15 @@ button:active {
 
 .secondary-btn {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #999;
+  border: 1px solid rgba(33, 150, 243, 0.5);
+  color: #64b5f6;
   font-size: 12px;
   padding: 8px 16px;
 }
 
 .secondary-btn:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  color: #ccc;
+  border-color: rgba(33, 150, 243, 0.8);
+  color: #90caf9;
   box-shadow: none;
 }
 
@@ -228,6 +228,7 @@ button:active {
   opacity: 0.6;
   cursor: default;
   border-color: rgba(255, 255, 255, 0.15);
+  color: #999;
 }
 
 .secondary-btn:disabled:hover {
