@@ -48,6 +48,7 @@ class FappyBird {
 
     // State
     this.handTrackingEnabled = false;
+    this.handTrackingInitializing = false;
     this.lastDetectionTime = 0;
     this.detectionInProgress = false;
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -122,7 +123,7 @@ class FappyBird {
       const result = await navigator.permissions.query({ name: 'camera' });
       if (result.state === 'granted') {
         // Already have permission, auto-init hand tracking
-        this.initHandTracking();
+        await this.initHandTracking();
       } else {
         this.updateStatus('');
       }
@@ -133,6 +134,12 @@ class FappyBird {
   }
 
   async initHandTracking() {
+    // Prevent double initialization
+    if (this.handTrackingInitializing || this.handTrackingEnabled) {
+      return this.handTrackingEnabled;
+    }
+    this.handTrackingInitializing = true;
+
     this.updateStatus('Loading...');
     this.showLoadingOverlay(true);
 
@@ -143,6 +150,7 @@ class FappyBird {
     if (!window.isSecureContext) {
       this.updateStatus('HTTPS required');
       this.showLoadingOverlay(false);
+      this.handTrackingInitializing = false;
       console.warn('Camera requires HTTPS or localhost');
       return false;
     }
@@ -167,6 +175,7 @@ class FappyBird {
         return true;
       } else {
         this.updateStatus('Camera denied');
+        this.handTrackingInitializing = false;
         this.webcam.style.display = 'none';
         document.getElementById('debug-overlay').style.display = 'none';
         return false;
@@ -175,6 +184,7 @@ class FappyBird {
       console.error('Hand tracking init error:', error);
       this.showLoadingOverlay(false);
       this.updateStatus('Camera error');
+      this.handTrackingInitializing = false;
       this.webcam.style.display = 'none';
       return false;
     }
