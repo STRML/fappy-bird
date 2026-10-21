@@ -17,6 +17,7 @@ export class HandTracker {
 
     // Worker callback for async results
     this.onDetectionResult = null;
+    this.workerBusy = false;
 
     // Track hand positions to identify the moving hand
     this.handHistories = [[], []]; // History for up to 2 hands
@@ -117,6 +118,7 @@ export class HandTracker {
           clearTimeout(timeout);
           reject(new Error(error));
         } else if (type === 'result') {
+          this.workerBusy = false;
           // Handle detection result
           if (this.onDetectionResult) {
             this.onDetectionResult(hands);
@@ -190,10 +192,17 @@ export class HandTracker {
   }
 
   async detectWithWorker() {
+    // Only one frame in flight: overlapping detections on the worker's shared
+    // canvas fail or return empty, which makes the hand vanish mid-game.
+    if (this.workerBusy) {
+      return this.lastHand;
+    }
+
     try {
       // Create ImageBitmap from video frame
       const imageBitmap = await createImageBitmap(this.video);
 
+      this.workerBusy = true;
       // Send to worker (transfer ownership for performance)
       this.worker.postMessage({
         type: 'detect',
@@ -206,6 +215,7 @@ export class HandTracker {
       // Return last known hand (don't redraw - worker callback will update)
       return this.lastHand;
     } catch (error) {
+      this.workerBusy = false;
       console.error('Worker detection error:', error);
       return null;
     }
