@@ -353,7 +353,7 @@ function recordingCtx() {
 function workerTracker() {
   const ht = new HandTracker();
   const posts = [];
-  ht.worker = { postMessage: (msg) => posts.push(msg) };
+  ht.worker = { postMessage: (msg) => posts.push(msg.data) };
   ht.useWorker = true;
   ht.isReady = true;
   ht.video = { videoWidth: 640, videoHeight: 480 };
@@ -374,12 +374,12 @@ describe('HandTracker - Worker Backpressure', () => {
   });
 
   test('detect() resolves only after the worker answers', async () => {
-    const { ht } = workerTracker();
+    const { ht, posts } = workerTracker();
     let settled = false;
     const pending = ht.detect().then(() => { settled = true; });
     await tick();
     assertFalse(settled, 'detect resolved before the worker replied');
-    ht.onWorkerResult([]);
+    ht.onWorkerResult([], posts[0].frameId);
     await pending;
     assertTrue(settled);
   });
@@ -388,21 +388,45 @@ describe('HandTracker - Worker Backpressure', () => {
     const { ht, posts } = workerTracker();
     const first = ht.detect();
     await tick();
-    ht.onWorkerResult([]);
+    ht.onWorkerResult([], posts[0].frameId);
     await first;
     ht.detect();
     await tick();
     assertEqual(posts.length, 2);
   });
 
-  test('drops a frame the worker never answers after the timeout', async () => {
+  test('detect() settles on its own when the worker never answers', async () => {
+    const { ht } = workerTracker();
+    ht.frameTimeoutMs = 5;
+    const outcome = await Promise.race([
+      ht.detect().then(() => 'settled'),
+      new Promise(r => setTimeout(() => r('wedged'), 50))
+    ]);
+    assertEqual(outcome, 'settled', 'a lost reply must not wedge the game loop');
+  });
+
+  test('a worker crash after init frees the in-flight frame', async () => {
+    const { ht } = workerTracker();
+    const pending = ht.detect();
+    await tick();
+    ht.onWorkerError(new Error('boom'));
+    await pending;
+    assertEqual(ht.inFlight, null);
+  });
+
+  test('a late reply to a timed-out frame does not settle the next frame', async () => {
     const { ht, posts } = workerTracker();
     ht.frameTimeoutMs = 5;
-    ht.detect();
-    await new Promise(r => setTimeout(r, 15));
-    ht.detect();
+    await ht.detect();
+    let settled = false;
+    ht.detect().then(() => { settled = true; });
     await tick();
-    assertEqual(posts.length, 2, 'a lost reply must not wedge detection forever');
+    ht.onWorkerResult([], posts[0].frameId);
+    await tick();
+    assertFalse(settled, 'stale reply resolved the newer frame');
+    ht.onWorkerResult([], posts[1].frameId);
+    await tick();
+    assertTrue(settled);
   });
 });
 

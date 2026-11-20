@@ -27,6 +27,7 @@ export class HandTracker {
     // One frame in flight to the worker; a reply lost past the timeout frees the slot
     this.inFlight = null;
     this.frameTimeoutMs = 1000;
+    this.nextFrameId = 0;
 
     // Track hand positions to identify the moving hand
     this.handHistories = [[], []]; // History for up to 2 hands
@@ -112,7 +113,7 @@ export class HandTracker {
       }, 30000); // 30s timeout for model loading
 
       this.worker.onmessage = (e) => {
-        const { type, hands, error } = e.data;
+        const { type, hands, error, frameId } = e.data;
 
         if (type === 'ready') {
           clearTimeout(timeout);
@@ -121,13 +122,14 @@ export class HandTracker {
           clearTimeout(timeout);
           reject(new Error(error));
         } else if (type === 'result') {
-          this.onWorkerResult(hands);
+          this.onWorkerResult(hands, frameId);
         }
       };
 
       this.worker.onerror = (error) => {
         clearTimeout(timeout);
         reject(error);
+        this.onWorkerError(error);
       };
 
       // Initialize worker with video dimensions
@@ -191,40 +193,48 @@ export class HandTracker {
   }
 
   detectWithWorker() {
-    const inFlightFresh = this.inFlight &&
-      performance.now() - this.inFlight.sentAt < this.frameTimeoutMs;
-    if (inFlightFresh) {
+    if (this.inFlight) {
       return this.inFlight.promise;
     }
-    this.settleInFlight();
 
     let resolve;
     const promise = new Promise(r => { resolve = r; });
-    this.inFlight = { promise, resolve, sentAt: performance.now() };
-    this.postFrame();
+    const frameId = ++this.nextFrameId;
+    const timer = setTimeout(() => this.settleInFlight(frameId), this.frameTimeoutMs);
+    this.inFlight = { promise, resolve, frameId, timer };
+    this.postFrame(frameId);
     return promise;
   }
 
-  async postFrame() {
+  async postFrame(frameId) {
+    let imageBitmap = null;
     try {
-      const imageBitmap = await createImageBitmap(this.video);
+      imageBitmap = await createImageBitmap(this.video);
       this.worker.postMessage({
         type: 'detect',
-        data: { imageBitmap, timestamp: performance.now() }
+        data: { imageBitmap, frameId }
       }, [imageBitmap]);
     } catch (error) {
       console.error('Worker detection error:', error);
-      this.settleInFlight();
+      imageBitmap?.close();
+      this.settleInFlight(frameId);
     }
   }
 
-  onWorkerResult(hands) {
+  onWorkerResult(hands, frameId) {
+    if (this.inFlight?.frameId !== frameId) return;
     this.processHandResult(hands || []);
-    this.settleInFlight();
+    this.settleInFlight(frameId);
   }
 
-  settleInFlight() {
-    if (!this.inFlight) return;
+  onWorkerError(error) {
+    console.error('Hand worker error:', error);
+    this.settleInFlight(this.inFlight?.frameId);
+  }
+
+  settleInFlight(frameId) {
+    if (!this.inFlight || this.inFlight.frameId !== frameId) return;
+    clearTimeout(this.inFlight.timer);
     this.inFlight.resolve(this.lastHand);
     this.inFlight = null;
   }
@@ -461,7 +471,7 @@ export class HandTracker {
       const tracks = this.video.srcObject.getTracks();
       tracks.forEach(track => track.stop());
     }
-    this.settleInFlight();
+    this.settleInFlight(this.inFlight?.frameId);
     this.isReady = false;
   }
 }
