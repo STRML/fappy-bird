@@ -24,9 +24,10 @@ export class HandTracker {
     this.facingMode = 'user'; // 'user' = front, 'environment' = back
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    // One frame in flight to the worker; a reply lost past the timeout frees the slot
+    // One frame in flight to the worker. The timeout is a liveness check for a
+    // lost reply, set well above the slowest phone's inference time.
     this.inFlight = null;
-    this.frameTimeoutMs = 1000;
+    this.frameTimeoutMs = 5000;
     this.nextFrameId = 0;
 
     // Track hand positions to identify the moving hand
@@ -210,6 +211,10 @@ export class HandTracker {
     let imageBitmap = null;
     try {
       imageBitmap = await createImageBitmap(this.video);
+      if (this.inFlight?.frameId !== frameId) {
+        imageBitmap.close();
+        return;
+      }
       this.worker.postMessage({
         type: 'detect',
         data: { imageBitmap, frameId }
@@ -221,8 +226,9 @@ export class HandTracker {
     }
   }
 
+  // A late reply to a timed-out frame still carries a real detection, so use it,
+  // but only the reply to the current frame frees the slot.
   onWorkerResult(hands, frameId) {
-    if (this.inFlight?.frameId !== frameId) return;
     this.processHandResult(hands || []);
     this.settleInFlight(frameId);
   }

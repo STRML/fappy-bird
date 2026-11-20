@@ -414,6 +414,24 @@ describe('HandTracker - Worker Backpressure', () => {
     assertEqual(ht.inFlight, null);
   });
 
+  test('a late reply still updates hand state', async () => {
+    const { ht, posts } = workerTracker();
+    ht.frameTimeoutMs = 5;
+    await ht.detect();
+    const hand = { keypoints: Array.from({ length: 21 }, () => ({ x: 10, y: 20 })) };
+    ht.onWorkerResult([hand], posts[0].frameId);
+    assertEqual(ht.lastHand, hand, 'a slow worker must still move the bird');
+  });
+
+  test('does not post a frame whose slot timed out before the bitmap was ready', async () => {
+    const { ht, posts } = workerTracker();
+    ht.frameTimeoutMs = 1;
+    globalThis.createImageBitmap = () => new Promise(r => setTimeout(() => r({ close() {} }), 10));
+    await ht.detect();
+    await new Promise(r => setTimeout(r, 20));
+    assertEqual(posts.length, 0);
+  });
+
   test('a late reply to a timed-out frame does not settle the next frame', async () => {
     const { ht, posts } = workerTracker();
     ht.frameTimeoutMs = 5;
