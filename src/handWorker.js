@@ -68,7 +68,7 @@ self.onmessage = async (e) => {
 
     case 'detect':
       const hands = await detectHands(data.imageBitmap);
-      self.postMessage({ type: 'result', hands, timestamp: data.timestamp });
+      self.postMessage({ type: 'result', hands, frameId: data.frameId });
       break;
   }
 };

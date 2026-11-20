@@ -21,19 +21,31 @@ let currentSuite = '';
 
 function describe(name, fn) {
   currentSuite = name;
-  console.log(`\n${name}`);
   fn();
 }
 
+const queue = [];
+
 function test(name, fn) {
-  try {
-    fn();
-    passed++;
-    console.log(`  ✓ ${name}`);
-  } catch (e) {
-    failed++;
-    console.log(`  ✗ ${name}`);
-    console.log(`    Error: ${e.message}`);
+  queue.push({ suite: currentSuite, name, fn });
+}
+
+async function runQueue() {
+  let shownSuite = null;
+  for (const { suite, name, fn } of queue) {
+    if (suite !== shownSuite) {
+      console.log(`\n${suite}`);
+      shownSuite = suite;
+    }
+    try {
+      await fn();
+      passed++;
+      console.log(`  ✓ ${name}`);
+    } catch (e) {
+      failed++;
+      console.log(`  ✗ ${name}`);
+      console.log(`    Error: ${e.message}`);
+    }
   }
 }
 
@@ -327,6 +339,140 @@ describe('HandTracker - Persistence', () => {
   });
 });
 
+// ========== HAND TRACKER WORKER PIPELINE ==========
+
+function recordingCtx() {
+  const calls = [];
+  const ctx = new Proxy({}, {
+    get: (target, prop) => prop in target ? target[prop] : (...args) => calls.push(prop),
+    set: (target, prop, value) => { target[prop] = value; return true; }
+  });
+  return { ctx, calls };
+}
+
+function workerTracker() {
+  const ht = new HandTracker();
+  const posts = [];
+  ht.worker = { postMessage: (msg) => posts.push(msg.data) };
+  ht.useWorker = true;
+  ht.isReady = true;
+  ht.video = { videoWidth: 640, videoHeight: 480 };
+  globalThis.createImageBitmap = async () => ({ close() {} });
+  return { ht, posts };
+}
+
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+describe('HandTracker - Worker Backpressure', () => {
+  test('keeps at most one frame in flight to the worker', async () => {
+    const { ht, posts } = workerTracker();
+    ht.detect();
+    ht.detect();
+    ht.detect();
+    await tick();
+    assertEqual(posts.length, 1, `expected 1 frame posted, got ${posts.length}`);
+  });
+
+  test('detect() resolves only after the worker answers', async () => {
+    const { ht, posts } = workerTracker();
+    let settled = false;
+    const pending = ht.detect().then(() => { settled = true; });
+    await tick();
+    assertFalse(settled, 'detect resolved before the worker replied');
+    ht.onWorkerResult([], posts[0].frameId);
+    await pending;
+    assertTrue(settled);
+  });
+
+  test('sends the next frame once the worker answers', async () => {
+    const { ht, posts } = workerTracker();
+    const first = ht.detect();
+    await tick();
+    ht.onWorkerResult([], posts[0].frameId);
+    await first;
+    ht.detect();
+    await tick();
+    assertEqual(posts.length, 2);
+  });
+
+  test('detect() settles on its own when the worker never answers', async () => {
+    const { ht } = workerTracker();
+    ht.frameTimeoutMs = 5;
+    const outcome = await Promise.race([
+      ht.detect().then(() => 'settled'),
+      new Promise(r => setTimeout(() => r('wedged'), 50))
+    ]);
+    assertEqual(outcome, 'settled', 'a lost reply must not wedge the game loop');
+  });
+
+  test('a worker crash after init frees the in-flight frame', async () => {
+    const { ht } = workerTracker();
+    const pending = ht.detect();
+    await tick();
+    ht.onWorkerError(new Error('boom'));
+    await pending;
+    assertEqual(ht.inFlight, null);
+  });
+
+  test('a late reply still updates hand state', async () => {
+    const { ht, posts } = workerTracker();
+    ht.frameTimeoutMs = 5;
+    await ht.detect();
+    const hand = { keypoints: Array.from({ length: 21 }, () => ({ x: 10, y: 20 })) };
+    ht.onWorkerResult([hand], posts[0].frameId);
+    assertEqual(ht.lastHand, hand, 'a slow worker must still move the bird');
+  });
+
+  test('does not post a frame whose slot timed out before the bitmap was ready', async () => {
+    const { ht, posts } = workerTracker();
+    ht.frameTimeoutMs = 1;
+    globalThis.createImageBitmap = () => new Promise(r => setTimeout(() => r({ close() {} }), 10));
+    await ht.detect();
+    await new Promise(r => setTimeout(r, 20));
+    assertEqual(posts.length, 0);
+  });
+
+  test('a late reply to a timed-out frame does not settle the next frame', async () => {
+    const { ht, posts } = workerTracker();
+    ht.frameTimeoutMs = 5;
+    await ht.detect();
+    let settled = false;
+    ht.detect().then(() => { settled = true; });
+    await tick();
+    ht.onWorkerResult([], posts[0].frameId);
+    await tick();
+    assertFalse(settled, 'stale reply resolved the newer frame');
+    ht.onWorkerResult([], posts[1].frameId);
+    await tick();
+    assertTrue(settled);
+  });
+});
+
+describe('HandTracker - Preview', () => {
+  test('redraws the camera frame on every call without detection results', () => {
+    const ht = new HandTracker();
+    ht.isReady = true;
+    ht.video = { videoWidth: 640, videoHeight: 480 };
+    ht.debugCanvas = { width: 120, height: 90 };
+    const { ctx, calls } = recordingCtx();
+    ht.debugCtx = ctx;
+    ht.renderPreview();
+    ht.renderPreview();
+    ht.renderPreview();
+    assertEqual(calls.filter(c => c === 'drawImage').length, 3);
+  });
+
+  test('worker results do not draw to the preview', () => {
+    const ht = new HandTracker();
+    ht.video = { videoWidth: 640, videoHeight: 480 };
+    ht.debugCanvas = { width: 120, height: 90 };
+    const { ctx, calls } = recordingCtx();
+    ht.debugCtx = ctx;
+    ht.processHandResult([]);
+    assertEqual(calls.length, 0);
+  });
+});
+
 // ========== GAME SPEED TESTS ==========
 
 // Mock canvas for Game tests
@@ -441,6 +587,8 @@ describe('Game - Reset', () => {
 });
 
 // ========== SUMMARY ==========
+
+await runQueue();
 
 console.log('\n' + '='.repeat(40));
 console.log(`Results: ${passed} passed, ${failed} failed`);
