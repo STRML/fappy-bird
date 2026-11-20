@@ -247,6 +247,10 @@ class FappyBird {
       });
     }
 
+    if (this.handTrackingEnabled) {
+      this.handTracker.renderPreview();
+    }
+
     // Update game with delta time
     const event = this.game.update(deltaTime);
 

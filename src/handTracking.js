@@ -1,5 +1,14 @@
 // TensorFlow.js hand tracking integration
 
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4], // thumb
+  [0, 5], [5, 6], [6, 7], [7, 8], // index
+  [0, 9], [9, 10], [10, 11], [11, 12], // middle
+  [0, 13], [13, 14], [14, 15], [15, 16], // ring
+  [0, 17], [17, 18], [18, 19], [19, 20], // pinky
+  [5, 9], [9, 13], [13, 17] // palm
+];
+
 export class HandTracker {
   constructor() {
     this.detector = null;
@@ -15,8 +24,9 @@ export class HandTracker {
     this.facingMode = 'user'; // 'user' = front, 'environment' = back
     this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    // Worker callback for async results
-    this.onDetectionResult = null;
+    // One frame in flight to the worker; a reply lost past the timeout frees the slot
+    this.inFlight = null;
+    this.frameTimeoutMs = 1000;
 
     // Track hand positions to identify the moving hand
     this.handHistories = [[], []]; // History for up to 2 hands
@@ -57,12 +67,6 @@ export class HandTracker {
         try {
           console.log('Initializing hand detector in worker...');
           await this.initWorker();
-
-          // Set up callback to process worker results
-          this.onDetectionResult = (hands) => {
-            this.processHandResult(hands || []);
-          };
-
           console.log('Worker-based hand detector ready');
           this.isReady = true;
           return true;
@@ -117,10 +121,7 @@ export class HandTracker {
           clearTimeout(timeout);
           reject(new Error(error));
         } else if (type === 'result') {
-          // Handle detection result
-          if (this.onDetectionResult) {
-            this.onDetectionResult(hands);
-          }
+          this.onWorkerResult(hands);
         }
       };
 
@@ -189,26 +190,43 @@ export class HandTracker {
     return this.isMobile; // Only show switch on mobile where front/back matters
   }
 
-  async detectWithWorker() {
-    try {
-      // Create ImageBitmap from video frame
-      const imageBitmap = await createImageBitmap(this.video);
+  detectWithWorker() {
+    const inFlightFresh = this.inFlight &&
+      performance.now() - this.inFlight.sentAt < this.frameTimeoutMs;
+    if (inFlightFresh) {
+      return this.inFlight.promise;
+    }
+    this.settleInFlight();
 
-      // Send to worker (transfer ownership for performance)
+    let resolve;
+    const promise = new Promise(r => { resolve = r; });
+    this.inFlight = { promise, resolve, sentAt: performance.now() };
+    this.postFrame();
+    return promise;
+  }
+
+  async postFrame() {
+    try {
+      const imageBitmap = await createImageBitmap(this.video);
       this.worker.postMessage({
         type: 'detect',
-        data: {
-          imageBitmap,
-          timestamp: performance.now()
-        }
+        data: { imageBitmap, timestamp: performance.now() }
       }, [imageBitmap]);
-
-      // Return last known hand (don't redraw - worker callback will update)
-      return this.lastHand;
     } catch (error) {
       console.error('Worker detection error:', error);
-      return null;
+      this.settleInFlight();
     }
+  }
+
+  onWorkerResult(hands) {
+    this.processHandResult(hands || []);
+    this.settleInFlight();
+  }
+
+  settleInFlight() {
+    if (!this.inFlight) return;
+    this.inFlight.resolve(this.lastHand);
+    this.inFlight = null;
   }
 
   // Process hands array and update internal state
@@ -218,12 +236,10 @@ export class HandTracker {
       if (this.lostFrames <= this.maxLostFrames && this.lastValidHand) {
         this.lastHand = this.lastValidHand;
         this.lastHandCenter = this.lastValidCenter;
-        this.drawDebug(this.lastValidHand, false);
         return this.lastValidHand;
       }
       this.lastHand = null;
       this.lastHandCenter = null;
-      this.clearDebug();
       return null;
     }
 
@@ -237,7 +253,6 @@ export class HandTracker {
       this.lastHandCenter = activeHand.center;
       this.lastValidHand = activeHand.hand;
       this.lastValidCenter = activeHand.center;
-      this.drawDebug(activeHand.hand, activeHand.isActive);
       return activeHand.hand;
     }
 
@@ -263,48 +278,7 @@ export class HandTracker {
       const hands = await this.detector.estimateHands(this.video, {
         flipHorizontal: true
       });
-
-      if (hands.length === 0) {
-        // Hand lost - use persistence
-        this.lostFrames++;
-
-        if (this.lostFrames <= this.maxLostFrames && this.lastValidHand) {
-          // Continue using last known position
-          this.lastHand = this.lastValidHand;
-          this.lastHandCenter = this.lastValidCenter;
-          this.drawDebug(this.lastValidHand, false); // Draw dimmed to show it's interpolated
-          return this.lastValidHand;
-        }
-
-        // Truly lost - clear everything
-        this.lastHand = null;
-        this.lastHandCenter = null;
-        this.clearDebug();
-        return null;
-      }
-
-      // Hand found - reset lost counter
-      this.lostFrames = 0;
-
-      // Get center position for each hand (average of key points)
-      // This works better for horizontal grips than just wrist
-      const handPositions = hands.map(hand => this.getHandCenter(hand));
-
-      // Update histories and find the most active (moving) hand
-      this.updateHandHistories(handPositions);
-      const activeHand = this.selectActiveHand(hands, handPositions);
-
-      if (activeHand) {
-        this.lastHand = activeHand.hand;
-        this.lastHandCenter = activeHand.center;
-        // Store as valid for persistence
-        this.lastValidHand = activeHand.hand;
-        this.lastValidCenter = activeHand.center;
-        this.drawDebug(activeHand.hand, activeHand.isActive);
-        return activeHand.hand;
-      }
-
-      return hands[0];
+      return this.processHandResult(hands);
     } catch (error) {
       console.error('Detection error:', error);
       return null;
@@ -385,146 +359,101 @@ export class HandTracker {
     return this.getHandCenter(this.lastHand);
   }
 
-  drawDebug(hand, isActive = true) {
-    if (!this.debugCtx || !this.debugCanvas) return;
-    // Skip detailed drawing on mobile for performance
-    if (this.isMobile) {
-      this.drawDebugSimple(hand);
+  // Called every animation frame so the camera preview stays live
+  // no matter how slowly detection results arrive.
+  renderPreview() {
+    if (!this.debugCtx || !this.isReady || !this.video?.videoWidth) return;
+
+    this.drawVideoFrame();
+    if (!this.lastHand) {
+      this.drawNoHand();
       return;
     }
+    if (this.isMobile) {
+      this.drawCenterDot(this.lastHand);
+      return;
+    }
+    this.drawSkeleton(this.lastHand, this.lostFrames === 0);
+  }
 
+  drawVideoFrame() {
     const ctx = this.debugCtx;
-    const scaleX = this.debugCanvas.width / this.video.videoWidth;
-    const scaleY = this.debugCanvas.height / this.video.videoHeight;
-
-    // Clear
-    ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
-
-    // Draw video frame (mirror only for front camera)
+    const { width, height } = this.debugCanvas;
+    ctx.clearRect(0, 0, width, height);
     ctx.save();
     if (this.facingMode === 'user') {
       ctx.scale(-1, 1);
-      ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
+      ctx.drawImage(this.video, -width, 0, width, height);
     } else {
-      ctx.drawImage(this.video, 0, 0, this.debugCanvas.width, this.debugCanvas.height);
+      ctx.drawImage(this.video, 0, 0, width, height);
     }
     ctx.restore();
+  }
 
-    // Draw hand landmarks
-    // For front camera: video is mirrored, so flip keypoint X to match
+  drawNoHand() {
+    this.debugCtx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+    this.debugCtx.fillRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
+  }
+
+  // Keypoints come back pre-flipped (flipHorizontal: true). The front-camera
+  // preview is mirrored to match; the rear-camera preview is not, so flip back.
+  toPreview(point) {
+    const x = point.x * this.debugCanvas.width / this.video.videoWidth;
+    const y = point.y * this.debugCanvas.height / this.video.videoHeight;
+    return { x: this.facingMode === 'user' ? x : this.debugCanvas.width - x, y };
+  }
+
+  drawCenterDot(hand) {
+    const center = this.getHandCenter(hand);
+    if (!center) return;
+    const { x, y } = this.toPreview(center);
+    const ctx = this.debugCtx;
+    ctx.fillStyle = '#00ff00';
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawSkeleton(hand, isActive) {
+    const ctx = this.debugCtx;
     const color = isActive ? '#00ff00' : '#666666';
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
 
-    // Flip X coordinate for rear camera only (front camera video is already mirrored via ctx.scale)
-    const flipX = (x) => this.facingMode === 'user' ? x : this.debugCanvas.width - x;
-
-    for (const point of hand.keypoints) {
-      const x = flipX(point.x * scaleX);
-      const y = point.y * scaleY;
-
+    const points = hand.keypoints.map(p => this.toPreview(p));
+    for (const { x, y } of points) {
       ctx.beginPath();
       ctx.arc(x, y, 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Draw connections
-    const connections = [
-      [0, 1], [1, 2], [2, 3], [3, 4], // thumb
-      [0, 5], [5, 6], [6, 7], [7, 8], // index
-      [0, 9], [9, 10], [10, 11], [11, 12], // middle
-      [0, 13], [13, 14], [14, 15], [15, 16], // ring
-      [0, 17], [17, 18], [18, 19], [19, 20], // pinky
-      [5, 9], [9, 13], [13, 17] // palm
-    ];
-
-    for (const [i, j] of connections) {
-      const p1 = hand.keypoints[i];
-      const p2 = hand.keypoints[j];
-      const x1 = flipX(p1.x * scaleX);
-      const y1 = p1.y * scaleY;
-      const x2 = flipX(p2.x * scaleX);
-      const y2 = p2.y * scaleY;
-
+    for (const [i, j] of HAND_CONNECTIONS) {
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(points[i].x, points[i].y);
+      ctx.lineTo(points[j].x, points[j].y);
       ctx.stroke();
     }
 
-    // Draw tracked center point (yellow crosshair)
     const center = this.getHandCenter(hand);
     if (center && isActive) {
-      const cx = flipX(center.x * scaleX);
-      const cy = center.y * scaleY;
-
-      ctx.strokeStyle = '#FFD93D';
-      ctx.lineWidth = 2;
-
-      // Circle
-      ctx.beginPath();
-      ctx.arc(cx, cy, 8, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Crosshair
-      ctx.beginPath();
-      ctx.moveTo(cx - 12, cy);
-      ctx.lineTo(cx + 12, cy);
-      ctx.moveTo(cx, cy - 12);
-      ctx.lineTo(cx, cy + 12);
-      ctx.stroke();
+      this.drawCrosshair(this.toPreview(center));
     }
   }
 
-  // Simplified debug drawing for mobile - just video + center point
-  drawDebugSimple(hand) {
+  drawCrosshair({ x, y }) {
     const ctx = this.debugCtx;
-    ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
-
-    // Draw video frame (mirror only for front camera)
-    ctx.save();
-    if (this.facingMode === 'user') {
-      ctx.scale(-1, 1);
-      ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
-    } else {
-      ctx.drawImage(this.video, 0, 0, this.debugCanvas.width, this.debugCanvas.height);
-    }
-    ctx.restore();
-
-    // Just draw center point
-    const center = this.getHandCenter(hand);
-    if (center) {
-      const scaleX = this.debugCanvas.width / this.video.videoWidth;
-      const scaleY = this.debugCanvas.height / this.video.videoHeight;
-      // Flip X for rear camera only (front camera video is already mirrored via ctx.scale)
-      const cx = this.facingMode === 'user' ? center.x * scaleX : this.debugCanvas.width - center.x * scaleX;
-      ctx.fillStyle = '#00ff00';
-      ctx.beginPath();
-      ctx.arc(cx, center.y * scaleY, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  clearDebug() {
-    if (!this.debugCtx || !this.debugCanvas) return;
-
-    const ctx = this.debugCtx;
-    ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
-
-    // Draw video frame only (mirror only for front camera)
-    ctx.save();
-    if (this.facingMode === 'user') {
-      ctx.scale(-1, 1);
-      ctx.drawImage(this.video, -this.debugCanvas.width, 0, this.debugCanvas.width, this.debugCanvas.height);
-    } else {
-      ctx.drawImage(this.video, 0, 0, this.debugCanvas.width, this.debugCanvas.height);
-    }
-    ctx.restore();
-
-    // "No hand" indicator
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
-    ctx.fillRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
+    ctx.strokeStyle = '#FFD93D';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y);
+    ctx.lineTo(x + 12, y);
+    ctx.moveTo(x, y - 12);
+    ctx.lineTo(x, y + 12);
+    ctx.stroke();
   }
 
   destroy() {
@@ -532,6 +461,7 @@ export class HandTracker {
       const tracks = this.video.srcObject.getTracks();
       tracks.forEach(track => track.stop());
     }
+    this.settleInFlight();
     this.isReady = false;
   }
 }
